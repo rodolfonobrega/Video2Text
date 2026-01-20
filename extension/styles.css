@@ -1,0 +1,32 @@
+#ai-subtitle-container {
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 24px;
+  text-align: center;
+  z-index: 9999;
+  pointer-events: none;
+  max-width: 80%;
+  line-height: 1.4;
+  font-family: 'YouTube Noto', Roboto, Arial, Helvetica, sans-serif;
+  text-shadow: 0 0 4px black;
+}
+
+#ai-status-overlay {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: #3498db;
+  color: white;
+  padding: 15px;
+  border-radius: 5px;
+  z-index: 10000;
+  font-family: sans-serif;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  display: none;
+}

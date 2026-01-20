@@ -1,0 +1,3 @@
+extension/images/*
+node_modules
+*.min.js
