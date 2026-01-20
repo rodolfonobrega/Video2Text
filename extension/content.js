@@ -44,6 +44,11 @@ function parseTime(timeStr) {
   return seconds;
 }
 
+function getVideoId(url) {
+  const match = url.match(/(?:v=|\/v\/|youtu\.be\/)([^&\s]+)/);
+  return match ? match[1] : null;
+}
+
 // Backend availability check
 async function checkBackendAvailability() {
   try {
@@ -63,11 +68,187 @@ async function checkBackendAvailability() {
   }
 }
 
+// Progress bar overlay
+function showProgress(stage, progress, details = '') {
+  let overlay = document.getElementById('ai-progress-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ai-progress-overlay';
+    overlay.innerHTML = `
+      <div id="ai-progress-content">
+        <div id="ai-progress-title">Generating Subtitles...</div>
+        <div id="ai-progress-bar-container">
+          <div id="ai-progress-bar"></div>
+        </div>
+        <div id="ai-progress-stage">Initializing...</div>
+        <div id="ai-progress-details"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  const bar = overlay.querySelector('#ai-progress-bar');
+  const stageEl = overlay.querySelector('#ai-progress-stage');
+  const detailsEl = overlay.querySelector('#ai-progress-details');
+
+  bar.style.width = `${progress}%`;
+  stageEl.textContent = stage;
+  if (details) {
+    detailsEl.textContent = details;
+    detailsEl.style.display = 'block';
+  } else {
+    detailsEl.style.display = 'none';
+  }
+
+  overlay.style.display = 'block';
+}
+
+function updateProgress(stage, progress, details = '') {
+  showProgress(stage, progress, details);
+}
+
+function hideProgress() {
+  const overlay = document.getElementById('ai-progress-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+}
+
+function showOverlay(text, duration = 0) {
+  let overlay = document.getElementById('ai-status-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ai-status-overlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.textContent = text;
+  overlay.style.display = 'block';
+
+  if (duration > 0) {
+    setTimeout(() => {
+      overlay.style.display = 'none';
+    }, duration);
+  }
+}
+
+function hideOverlay() {
+  const overlay = document.getElementById('ai-status-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+// Cache management
+const CACHE_PREFIX = 'yt_subtitles_cache_';
+const CACHE_EXPIRY_DAYS = 7;
+
+async function getCachedSubtitles(videoId) {
+  try {
+    const cacheKey = CACHE_PREFIX + videoId;
+    const cached = await chrome.storage.local.get(cacheKey);
+    if (cached[cacheKey]) {
+      const data = cached[cacheKey];
+      const now = Date.now();
+      const ageDays = (now - data.cachedAt) / (1000 * 60 * 60 * 24);
+
+      if (ageDays < CACHE_EXPIRY_DAYS) {
+        console.log('AI Subtitles: Using cached subtitles for', videoId);
+        return data.vtt;
+      } else {
+        console.log('AI Subtitles: Cache expired for', videoId);
+        await chrome.storage.local.remove(cacheKey);
+      }
+    }
+  } catch (error) {
+    console.warn('AI Subtitles: Cache read error:', error);
+  }
+  return null;
+}
+
+async function setCachedSubtitles(videoId, vtt) {
+  try {
+    const cacheKey = CACHE_PREFIX + videoId;
+    await chrome.storage.local.set({
+      [cacheKey]: {
+        vtt: vtt,
+        cachedAt: Date.now(),
+      },
+    });
+    console.log('AI Subtitles: Subtitles cached for', videoId);
+  } catch (error) {
+    console.warn('AI Subtitles: Cache write error:', error);
+  }
+}
+
+async function clearExpiredCache() {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const now = Date.now();
+    const expiryMs = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    let removed = 0;
+
+    for (const key of Object.keys(all)) {
+      if (key.startsWith(CACHE_PREFIX)) {
+        const data = all[key];
+        if (data.cachedAt && now - data.cachedAt > expiryMs) {
+          await chrome.storage.local.remove(key);
+          removed++;
+        }
+      }
+    }
+
+    if (removed > 0) {
+      console.log(`AI Subtitles: Removed ${removed} expired cache entries`);
+    }
+  } catch (error) {
+    console.warn('AI Subtitles: Cache cleanup error:', error);
+  }
+}
+
+// Retry mechanism
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  let lastError;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return response;
+      }
+
+      const errorText = await response.text();
+      lastError = new Error(`HTTP ${response.status}: ${errorText}`);
+
+      // Don't retry on client errors (4xx)
+      if (response.status >= 400 && response.status < 500) {
+        throw lastError;
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`AI Subtitles: Retry ${attempt + 1}/${maxRetries} in ${delay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // Global state for subtitle management
 let cachedSubtitles = null;
 let subtitlesVisible = false;
 let subtitleInterval = null;
 let currentVideoUrl = null;
+let currentVideoId = null;
 
 function clearSubtitleState() {
   cachedSubtitles = null;
@@ -93,6 +274,7 @@ function clearSubtitleState() {
 
 function checkVideoChange() {
   const newUrl = window.location.href;
+  const newVideoId = getVideoId(newUrl);
 
   if (currentVideoUrl && currentVideoUrl !== newUrl) {
     console.log('AI Subtitles: Video changed, clearing state');
@@ -100,14 +282,13 @@ function checkVideoChange() {
   }
 
   currentVideoUrl = newUrl;
+  currentVideoId = newVideoId;
 }
 
 // UI Injection
 function injectButton() {
-  // Check if button already exists
   if (document.getElementById('ai-subtitle-btn')) return;
 
-  // Try multiple selectors for controls
   const controls =
     document.querySelector('.ytp-right-controls') ||
     document.querySelector('.ytp-chrome-controls') ||
@@ -131,7 +312,6 @@ function injectButton() {
   btn.style.opacity = 1;
   btn.style.cursor = 'pointer';
 
-  // Flexbox for perfect centering
   btn.style.display = 'inline-flex';
   btn.style.alignItems = 'center';
   btn.style.justifyContent = 'center';
@@ -142,23 +322,19 @@ function injectButton() {
 
   btn.addEventListener('click', handleSubtitleButtonClick);
 
-  // Insert before the settings button if possible to avoid overlap
   const settingsBtn = document.querySelector('.ytp-settings-button');
   if (settingsBtn && settingsBtn.parentNode === controls) {
     controls.insertBefore(btn, settingsBtn);
   } else {
-    // Fallback: Prepend to the controls container
     controls.insertBefore(btn, controls.firstChild);
   }
   console.log('AI Subtitles: Button injected successfully');
 }
 
 async function handleSubtitleButtonClick() {
-  // If subtitles already exist, toggle visibility
   if (cachedSubtitles) {
     toggleSubtitleVisibility();
   } else {
-    // Generate new subtitles
     await generateSubtitles();
   }
 }
@@ -172,7 +348,6 @@ function toggleSubtitleVisibility() {
   subtitlesVisible = !subtitlesVisible;
 
   if (subtitlesVisible) {
-    // Resume subtitle display
     startSubtitleDisplay(cachedSubtitles);
     if (btn) {
       btn.style.opacity = 1;
@@ -180,7 +355,6 @@ function toggleSubtitleVisibility() {
     }
     showOverlay('Subtitles Visible', 1000);
   } else {
-    // Hide subtitles
     if (subtitleInterval) {
       clearInterval(subtitleInterval);
       subtitleInterval = null;
@@ -201,11 +375,11 @@ async function generateSubtitles() {
     btn.style.opacity = 0.3;
   }
 
-  showOverlay('Checking backend availability...');
+  updateProgress('Checking backend...', 5);
 
   const backendAvailable = await checkBackendAvailability();
   if (!backendAvailable) {
-    hideOverlay();
+    hideProgress();
     showOverlay(
       'Backend not running!\n\n' +
         'To start it:\n' +
@@ -221,7 +395,27 @@ async function generateSubtitles() {
     return;
   }
 
-  showOverlay('Generating Subtitles... Please wait.');
+  // Check for cached subtitles
+  const videoId = getVideoId(window.location.href);
+  if (videoId) {
+    const cachedVtt = await getCachedSubtitles(videoId);
+    if (cachedVtt) {
+      const cues = parseVTT(cachedVtt);
+      cachedSubtitles = cues;
+      subtitlesVisible = true;
+      startSubtitleDisplay(cues);
+      hideProgress();
+      showOverlay('Cached Subtitles Loaded!', 2000);
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = 1;
+        btn.title = 'Hide AI Subtitles';
+      }
+      return;
+    }
+  }
+
+  updateProgress('Checking settings...', 10);
 
   try {
     const { apiKey, baseUrl, targetLanguage, transcriptionModel, translationModel } =
@@ -234,6 +428,7 @@ async function generateSubtitles() {
       ]);
 
     if (!apiKey) {
+      hideProgress();
       alert('Please set your API Key in the extension settings.');
       hideOverlay();
       if (btn) {
@@ -245,19 +440,40 @@ async function generateSubtitles() {
 
     const videoUrl = window.location.href;
 
+    updateProgress('Starting transcription...', 15);
+
     const port = chrome.runtime.connect({ name: 'transcription-port' });
 
-    // Keep-alive interval
     const keepAliveInterval = setInterval(() => {
       port.postMessage({ action: 'ping' });
-    }, 25000); // Ping every 25 seconds
+    }, 25000);
+
+    let progressStage = 'downloading';
+    let progressValue = 15;
 
     port.onMessage.addListener((response) => {
-      if (response.action === 'transcription_result') {
+      if (response.action === 'progress') {
+        progressValue = response.progress;
+        progressStage = response.stage;
+
+        const stageMessages = {
+          downloading: 'Downloading audio...',
+          transcribing: 'Transcribing with AI...',
+          translating: 'Translating...',
+          complete: 'Complete!',
+        };
+
+        updateProgress(
+          stageMessages[progressStage] || progressStage,
+          progressValue,
+          response.details || ''
+        );
+      } else if (response.action === 'transcription_result') {
         clearInterval(keepAliveInterval);
         port.disconnect();
 
         if (!response.success) {
+          hideProgress();
           console.error(response.error);
           showOverlay(`Error: ${response.error}`, 5000);
           if (btn) {
@@ -268,9 +484,16 @@ async function generateSubtitles() {
         }
 
         const cues = parseVTT(response.data.vtt);
+
+        // Cache the subtitles
+        if (videoId) {
+          setCachedSubtitles(videoId, response.data.vtt);
+        }
+
         cachedSubtitles = cues;
         subtitlesVisible = true;
         startSubtitleDisplay(cues);
+        hideProgress();
         showOverlay('Subtitles Ready!', 2000);
 
         if (btn) {
@@ -281,6 +504,7 @@ async function generateSubtitles() {
       } else if (response.action === 'error') {
         clearInterval(keepAliveInterval);
         port.disconnect();
+        hideProgress();
         console.error(response.error);
 
         let errorMessage = response.error;
@@ -313,11 +537,11 @@ async function generateSubtitles() {
       },
     });
 
-    // Handle disconnection (e.g., if SW crashes)
     port.onDisconnect.addListener(() => {
       clearInterval(keepAliveInterval);
       if (chrome.runtime.lastError) {
         console.error('Port disconnected:', chrome.runtime.lastError);
+        hideProgress();
         showOverlay('Connection lost. Please try again.', 5000);
         if (btn) {
           btn.disabled = false;
@@ -326,6 +550,7 @@ async function generateSubtitles() {
       }
     });
   } catch (err) {
+    hideProgress();
     console.error(err);
     let errorMessage = err.message;
 
@@ -388,28 +613,6 @@ function startSubtitleDisplay(cues) {
   }, 100);
 }
 
-function showOverlay(text, duration = 0) {
-  let overlay = document.getElementById('ai-status-overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'ai-status-overlay';
-    document.body.appendChild(overlay);
-  }
-  overlay.textContent = text;
-  overlay.style.display = 'block';
-
-  if (duration > 0) {
-    setTimeout(() => {
-      overlay.style.display = 'none';
-    }, duration);
-  }
-}
-
-function hideOverlay() {
-  const overlay = document.getElementById('ai-status-overlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
 // Observer to handle navigation (SPA)
 const observer = new MutationObserver(() => {
   checkVideoChange();
@@ -424,6 +627,12 @@ setInterval(() => {
   injectButton();
 }, 2000);
 
-// Initial check
+// Initial check and cache cleanup
 currentVideoUrl = window.location.href;
+currentVideoId = getVideoId(currentVideoUrl);
 injectButton();
+
+// Clean expired cache on startup (10% chance)
+if (Math.random() < 0.1) {
+  clearExpiredCache();
+}

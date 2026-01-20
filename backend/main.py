@@ -1,6 +1,9 @@
 import os
-from typing import Optional
-from fastapi import FastAPI, HTTPException, status
+import re
+import time
+import uuid
+from typing import Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 import yt_dlp
@@ -9,14 +12,18 @@ from providers.openai import ProviderError, APIConnectionError as ProviderConnec
 
 app = FastAPI()
 
-# Allow CORS for the extension
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to the extension ID
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# In-memory cache for subtitles (video_id -> vtt)
+subtitle_cache: Dict[str, Dict[str, Any]] = {}
+CACHE_MAX_SIZE = 1000
+CACHE_EXPIRY_HOURS = 24 * 7  # 7 days
 
 
 class TranscribeRequest(BaseModel):
@@ -27,6 +34,7 @@ class TranscribeRequest(BaseModel):
     transcription_model: Optional[str] = "whisper-1"
     translation_model: Optional[str] = "gpt-4o-mini"
     provider: str = "openai"
+    check_cache: bool = True
 
     @field_validator("api_key")
     def validate_api_key(cls, v):
@@ -52,9 +60,69 @@ class HealthResponse(BaseModel):
     status: str
     providers: list[str]
     version: str
+    cache_size: int
+    uptime_seconds: float
 
 
-def download_audio(video_url: str, output_path: str):
+class CacheResponse(BaseModel):
+    video_id: str
+    cached: bool
+    vtt: Optional[str] = None
+    cached_at: Optional[str] = None
+    age_hours: Optional[float] = None
+
+
+def get_video_id(url: str) -> str:
+    match = re.search(r"(?:v=|\/v\/|youtu\.be\/)([^&\s]+)", url)
+    return match.group(1) if match else None
+
+
+def cleanup_expired_cache():
+    """Remove expired cache entries"""
+    now = time.time()
+    expired = [
+        video_id
+        for video_id, data in subtitle_cache.items()
+        if now - data.get("cached_at", 0) > CACHE_EXPIRY_HOURS * 3600
+    ]
+    for video_id in expired:
+        del subtitle_cache[video_id]
+    return len(expired)
+
+
+def get_cached_subtitle(video_id: str) -> Optional[Dict[str, Any]]:
+    """Get cached subtitle if exists and not expired"""
+    if video_id not in subtitle_cache:
+        return None
+
+    data = subtitle_cache[video_id]
+    now = time.time()
+    age_seconds = now - data.get("cached_at", 0)
+
+    if age_seconds > CACHE_EXPIRY_HOURS * 3600:
+        del subtitle_cache[video_id]
+        return None
+
+    return data
+
+
+def set_cached_subtitle(video_id: str, vtt: str):
+    """Store subtitle in cache"""
+    # Clean up if cache is full
+    if len(subtitle_cache) >= CACHE_MAX_SIZE:
+        cleanup_expired_cache()
+        # If still full, remove oldest entries
+        while len(subtitle_cache) >= CACHE_MAX_SIZE:
+            oldest = min(subtitle_cache.items(), key=lambda x: x[1].get("cached_at", 0))
+            del subtitle_cache[oldest[0]]
+
+    subtitle_cache[video_id] = {
+        "vtt": vtt,
+        "cached_at": time.time(),
+    }
+
+
+def download_audio(video_url: str, output_path: str, progress_callback=None):
     ydl_opts = {
         "format": "bestaudio/best",
         "postprocessors": [
@@ -68,17 +136,35 @@ def download_audio(video_url: str, output_path: str):
         "quiet": True,
         "no_warnings": True,
     }
+
+    if progress_callback:
+
+        class ProgressHook:
+            def __init__(self, callback):
+                self.callback = callback
+                self.last_percent = 0
+
+            def __call__(self, data):
+                if data["status"] == "downloading":
+                    percent = data.get("downloaded_bytes", 0) / data.get("total_bytes", 1) * 100
+                    if percent - self.last_percent >= 10:
+                        self.callback("downloading", percent, f"{percent:.1f}%")
+                        self.last_percent = percent
+                elif data["status"] == "finished":
+                    self.callback("downloading", 100, "Download complete")
+                return
+
+        ydl_opts["progress_hooks"] = [ProgressHook(progress_callback)]
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([video_url])
 
-    # yt-dlp might append the extension, so we need to find the file
     base_path = output_path
     if os.path.exists(base_path + ".mp3"):
         return base_path + ".mp3"
     elif os.path.exists(base_path):
         return base_path
 
-    # Fallback search
     directory = os.path.dirname(output_path)
     filename = os.path.basename(output_path)
     for f in os.listdir(directory):
@@ -108,7 +194,11 @@ def create_vtt_from_segments(segments) -> str:
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(
-        status="healthy", providers=ProviderFactory.list_providers(), version="1.0.0"
+        status="healthy",
+        providers=ProviderFactory.list_providers(),
+        version="1.0.0",
+        cache_size=len(subtitle_cache),
+        uptime_seconds=0,
     )
 
 
@@ -117,11 +207,52 @@ async def root():
     return {"message": "YouTube AI Subtitles Backend", "version": "1.0.0"}
 
 
+@app.get("/cache/{video_id}", response_model=CacheResponse)
+async def check_cache(video_id: str):
+    """Check if subtitles are cached for a video"""
+    cached = get_cached_subtitle(video_id)
+    if cached:
+        age_hours = (time.time() - cached["cached_at"]) / 3600
+        return CacheResponse(
+            video_id=video_id,
+            cached=True,
+            vtt=cached["vtt"],
+            cached_at=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(cached["cached_at"])),
+            age_hours=round(age_hours, 2),
+        )
+    return CacheResponse(video_id=video_id, cached=False)
+
+
+@app.delete("/cache/{video_id}")
+async def clear_cache(video_id: str):
+    """Clear cache for a specific video"""
+    if video_id in subtitle_cache:
+        del subtitle_cache[video_id]
+        return {"message": f"Cache cleared for {video_id}"}
+    return {"message": f"No cache found for {video_id}"}
+
+
+@app.delete("/cache")
+async def clear_all_cache(background_tasks: BackgroundTasks):
+    """Clear all cache entries"""
+    count = len(subtitle_cache)
+    subtitle_cache.clear()
+    return {"message": f"Cleared {count} cache entries"}
+
+
 @app.post("/transcribe")
-async def transcribe_video(request: TranscribeRequest):
+async def transcribe_video(request: TranscribeRequest, background_tasks: BackgroundTasks):
     audio_path = None
 
     try:
+        video_id = get_video_id(request.video_url)
+
+        # Check cache if requested
+        if request.check_cache and video_id:
+            cached = get_cached_subtitle(video_id)
+            if cached:
+                return {"vtt": cached["vtt"], cached: True}
+
         provider = ProviderFactory.get_provider(request.provider)
         if not provider:
             raise HTTPException(
@@ -132,8 +263,12 @@ async def transcribe_video(request: TranscribeRequest):
         transcription_model = request.transcription_model or "whisper-1"
         translation_model = request.translation_model or "gpt-4o-mini"
 
+        def progress_callback(stage, progress, details=""):
+            print(f"[{stage}] {progress}% - {details}")
+
+        audio_path = f"temp_audio_{uuid.uuid4().hex[:8]}"
         print(f"Downloading audio from {request.video_url}...")
-        audio_path = download_audio(request.video_url, "temp_audio")
+        audio_path = download_audio(request.video_url, audio_path, progress_callback)
         print(f"Audio downloaded to {audio_path}")
 
         print(f"Transcribing with {request.provider}/{transcription_model}...")
@@ -154,7 +289,12 @@ async def transcribe_video(request: TranscribeRequest):
                 base_url=request.base_url,
             )
 
-        return {"vtt": final_vtt}
+        # Cache the result
+        if video_id:
+            set_cached_subtitle(video_id, final_vtt)
+            background_tasks.add_task(cleanup_expired_cache)
+
+        return {"vtt": final_vtt, cached: False}
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
