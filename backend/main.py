@@ -35,6 +35,7 @@ class TranscribeRequest(BaseModel):
     target_language: str = "en"
     transcription_model: Optional[str] = "whisper-1"
     translation_model: Optional[str] = "gpt-4o-mini"
+    translation_method: str = "chatgpt"
     provider: str = "openai"
     check_cache: bool = True
 
@@ -333,6 +334,8 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                 model=translation_model,
                 api_key=request.api_key,
                 base_url=request.base_url,
+                translation_method=request.translation_method,
+                audio_path=audio_path,
             )
 
         # Cache the result

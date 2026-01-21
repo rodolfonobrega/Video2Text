@@ -111,14 +111,68 @@ class OpenAIProvider(TranscriptionProvider):
         model: str,
         api_key: str,
         base_url: str,
+        translation_method: str = "chatgpt",
+        audio_path: str = None,
         **kwargs,
     ) -> str:
+        if target_language == "original":
+            return vtt_content
+
+        if translation_method == "whisper" and audio_path:
+            return await self._translate_with_whisper(
+                audio_path=audio_path,
+                model=model,
+                api_key=api_key,
+                base_url=base_url,
+            )
+
+        return await self._translate_with_chatgpt(
+            vtt_content=vtt_content,
+            target_language=target_language,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+        )
+
+    async def _translate_with_whisper(
+        self,
+        audio_path: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+    ) -> str:
+        """Use Whisper's native translation endpoint (only supports English)"""
+        client = OpenAI(api_key=api_key, base_url=base_url)
+
+        with open(audio_path, "rb") as audio_file:
+            response = client.audio.translations.create(
+                model=model,
+                file=audio_file,
+                response_format="verbose_json",
+            )
+
+        if hasattr(response, "segments") and response.segments:
+            segments = [
+                TranscriptionSegment(start=seg.start, end=seg.end, text=seg.text)
+                for seg in response.segments
+            ]
+            return self.create_vtt_from_segments(segments)
+        else:
+            text_content = getattr(response, "text", str(response))
+            return f"WEBVTT\n\n00:00:00.000 --> 99:59:59.999\n{text_content}"
+
+    async def _translate_with_chatgpt(
+        self,
+        vtt_content: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+    ) -> str:
+        """Translate using ChatGPT (supports all languages)"""
         segments = parse_vtt_segments(vtt_content)
 
         if not segments:
-            return vtt_content
-
-        if target_language == "original":
             return vtt_content
 
         client = OpenAI(api_key=api_key, base_url=base_url)

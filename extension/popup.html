@@ -143,6 +143,15 @@
     </div>
 
     <div class="form-group">
+      <label for="translationMethod">Translation Method</label>
+      <select id="translationMethod">
+        <option value="chatgpt">ChatGPT (Any language, slower)</option>
+        <option value="whisper">Whisper (Only English, faster/cheaper)</option>
+      </select>
+      <div class="note">Whisper native is faster and cheaper but only supports English</div>
+    </div>
+
+    <div class="form-group">
       <label for="subtitlePosition">Subtitle Position (%)</label>
       <input type="range" id="subtitlePosition" min="5" max="50" value="10" />
       <div class="note">Bottom position (5-50%)</div>

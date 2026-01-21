@@ -418,13 +418,14 @@ async function generateSubtitles() {
   updateProgress('Checking settings...', 10);
 
   try {
-    const { apiKey, baseUrl, targetLanguage, transcriptionModel, translationModel } =
+    const { apiKey, baseUrl, targetLanguage, transcriptionModel, translationModel, translationMethod } =
       await chrome.storage.local.get([
         'apiKey',
         'baseUrl',
         'targetLanguage',
         'transcriptionModel',
         'translationModel',
+        'translationMethod',
       ]);
 
     if (!apiKey) {
@@ -531,8 +532,9 @@ async function generateSubtitles() {
         api_key: apiKey,
         base_url: baseUrl || 'https://api.openai.com/v1',
         target_language: targetLanguage || 'en',
-        transcription_model: transcriptionModel || 'gpt-4o-mini-transcribe',
+        transcription_model: transcriptionModel || 'whisper-1',
         translation_model: translationModel || 'gpt-4o-mini',
+        translation_method: translationMethod || 'chatgpt',
       },
     });
 

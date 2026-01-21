@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load saved settings
   chrome.storage.local.get(
-    ['apiKey', 'baseUrl', 'targetLanguage', 'transcriptionModel', 'translationModel', 'subtitlePosition', 'subtitleSize'],
+    ['apiKey', 'baseUrl', 'targetLanguage', 'transcriptionModel', 'translationModel', 'subtitlePosition', 'subtitleSize', 'translationMethod'],
     (result) => {
       const apiKeyEl = document.getElementById('apiKey');
       const baseUrlEl = document.getElementById('baseUrl');
@@ -12,14 +12,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const translationModelEl = document.getElementById('translationModel');
       const positionEl = document.getElementById('subtitlePosition');
       const sizeEl = document.getElementById('subtitleSize');
+      const methodEl = document.getElementById('translationMethod');
 
       if (apiKeyEl) apiKeyEl.value = result.apiKey || '';
       if (baseUrlEl) baseUrlEl.value = result.baseUrl || 'https://api.openai.com/v1';
       if (targetLanguageEl) targetLanguageEl.value = result.targetLanguage || 'en';
-      if (transcriptionModelEl) transcriptionModelEl.value = result.transcriptionModel || 'gpt-4o-mini-transcribe';
+      if (transcriptionModelEl) transcriptionModelEl.value = result.transcriptionModel || 'whisper-1';
       if (translationModelEl) translationModelEl.value = result.translationModel || 'gpt-4o-mini';
       if (positionEl) positionEl.value = result.subtitlePosition || '10';
       if (sizeEl) sizeEl.value = result.subtitleSize || '24';
+      if (methodEl) methodEl.value = result.translationMethod || 'chatgpt';
     }
   );
 
@@ -32,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const translationModel = document.getElementById('translationModel').value.trim();
     const subtitlePosition = document.getElementById('subtitlePosition').value;
     const subtitleSize = document.getElementById('subtitleSize').value;
+    const translationMethod = document.getElementById('translationMethod').value;
 
     const status = document.getElementById('status');
     const apiKeyError = document.getElementById('apiKeyError');
@@ -57,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         translationModel: translationModel,
         subtitlePosition: subtitlePosition,
         subtitleSize: subtitleSize,
+        translationMethod: translationMethod,
       },
       () => {
         status.textContent = 'Settings saved!';
