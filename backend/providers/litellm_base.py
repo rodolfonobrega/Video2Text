@@ -261,7 +261,26 @@ class LiteLLMProvider(TranscriptionProvider):
                 messages=[
                     {
                         "role": "system",
-                        "content": f"You are a professional content summarizer. You MUST respond EXCLUSIVELY in {lang_name}. All your output, including headers, bullet points, and any text, must be in {lang_name}. Do NOT use English words or phrases. Structure the summary with key takeaways and a brief conclusion. Use markdown formatting with headers (##) and bullet points (-)."
+                        "content": f"""
+                                    You are a professional content summarizer.
+
+                                    You MUST respond EXCLUSIVELY in {lang_name}.
+                                    All output — including titles, bullet points, and conclusions — must be written in {lang_name}.
+                                    Do NOT use any other language besides {lang_name}.
+
+                                    The input text is a transcription of a video.
+                                    Your task is to summarize the video by:
+                                    - Explaining what the video is about
+                                    - Highlighting the main topics discussed
+                                    - Extracting the key points and insights
+
+                                    Structure the summary using Markdown with:
+                                    - Section headers (##)
+                                    - Bullet points (-)
+
+                                    The summary must be clear, concise, and faithful to the original content.
+                                    End with a brief conclusion that synthesizes the main message of the video.
+                                    """
                     },
                     {
                         "role": "user",
