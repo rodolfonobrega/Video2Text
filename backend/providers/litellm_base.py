@@ -247,13 +247,11 @@ class LiteLLMProvider(TranscriptionProvider):
             'zh': 'Chinese',
         }
         
-        # Auto-detect language if "original"
+        # Use original language detection by AI if requested
         if target_language == 'original':
-            detected_lang = self._detect_language(transcript)
-            target_language = detected_lang
-            print(f"[DEBUG] Auto-detected language: {detected_lang}")
-        
-        lang_name = lang_names.get(target_language, target_language)
+            lang_name = "the original language of this text"
+        else:
+            lang_name = lang_names.get(target_language, target_language)
         
         try:
             response = await litellm.acompletion(
@@ -284,7 +282,7 @@ class LiteLLMProvider(TranscriptionProvider):
                     },
                     {
                         "role": "user",
-                        "content": f"Summarize this video transcript in {lang_name}:\n\n{transcript[:10000]}"  # Limit transcript length
+                        "content": f"Summarize this video transcript in {lang_name}:\n\n{transcript[:10000]}"
                     }
                 ],
                 api_key=api_key,
@@ -294,42 +292,3 @@ class LiteLLMProvider(TranscriptionProvider):
         except Exception as e:
             print(f"[ERROR] Summarization failed: {e}")
             return f"Error during summarization: {e}"
-    
-    def _detect_language(self, text: str) -> str:
-        """Detecta o idioma do texto baseado em palavras comuns."""
-        text_lower = text.lower()
-        
-        pt_words = ['o', 'a', 'de', 'que', 'e', 'é', 'com', 'não', 'uma', 'os', 'no', 'se', 'na', 'por', 'mais', 'as', 'dos', 'ou', 'como', 'mas', 'ao', 'ele', 'das', 'à', 'seu', 'sua']
-        es_words = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'pero', 'sus', 'le', 'ya', 'o', 'este']
-        fr_words = ['de', 'la', 'que', 'et', 'le', 'en', 'est', 'les', 'du', 'un', 'une', 'pour', 'des', 'dans', 'ce', 'pas', 'qui', 'par', 'sur', 'plus', 'avec', 'ne', 'se', 'sa', 'son', 'ou', 'mais', 'comme']
-        de_words = ['der', 'die', 'und', 'in', 'zu', 'den', 'das', 'nicht', 'von', 'sie', 'ist', 'des', 'sich', 'mit', 'dem', 'dass', 'er', 'es', 'ein', 'ich', 'auf', 'so', 'eine', 'als', 'auch', 'es', 'an', 'werden', 'aus', 'nach', 'nur', 'war', 'wie', 'bei']
-        ja_chars = set('的一は我有他在要不了日我在是上个们来时大地为子中你')
-        zh_chars = set('的一是在不了有和人这中大为上个们来时地之')
-        
-        pt_count = sum(1 for word in pt_words if word in text_lower)
-        es_count = sum(1 for word in es_words if word in text_lower)
-        fr_count = sum(1 for word in fr_words if word in text_lower)
-        de_count = sum(1 for word in de_words if word in text_lower)
-        
-        ja_count = sum(1 for char in ja_chars if char in text)
-        zh_count = sum(1 for char in zh_chars if char in text)
-        
-        # Japanese/Chinese detection
-        if ja_count > 10:
-            return 'ja'
-        if zh_count > 10:
-            return 'zh'
-        
-        # Romance languages
-        max_count = max(pt_count, es_count, fr_count, de_count)
-        if max_count < 2:
-            return 'en'  # Default to English if unsure
-        
-        if pt_count == max_count:
-            return 'pt'
-        elif es_count == max_count:
-            return 'es'
-        elif fr_count == max_count:
-            return 'fr'
-        else:
-            return 'de'
