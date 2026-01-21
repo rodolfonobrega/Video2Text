@@ -15,6 +15,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     }
+
+    const translationModelGroup = document.getElementById('translationModelGroup');
+    if (translationModelGroup) {
+      translationModelGroup.style.display = methodEl && methodEl.value === 'whisper' ? 'none' : 'block';
+    }
+  }
+
+  if (methodEl) {
+    methodEl.addEventListener('change', updateMethodOption);
   }
 
   if (transcriptionModelEl) {
