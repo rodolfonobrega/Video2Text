@@ -20,6 +20,36 @@ document.addEventListener('DOMContentLoaded', () => {
     if (translationModelGroup) {
       translationModelGroup.style.display = methodEl && methodEl.value === 'whisper' ? 'none' : 'block';
     }
+
+    updateLanguageOptions();
+  }
+
+  function updateLanguageOptions() {
+    const targetLangEl = document.getElementById('targetLanguage');
+    const languageNote = document.getElementById('languageNote');
+    if (!targetLangEl) return;
+
+    const isWhisper = methodEl && methodEl.value === 'whisper';
+    const currentValue = targetLangEl.value;
+
+    const options = targetLangEl.querySelectorAll('option');
+    options.forEach(opt => {
+      if (opt.value === 'original' || opt.value === 'en') {
+        opt.style.display = '';
+        opt.disabled = false;
+      } else {
+        opt.style.display = isWhisper ? 'none' : '';
+        opt.disabled = isWhisper;
+      }
+    });
+
+    if (languageNote) {
+      languageNote.style.display = isWhisper ? 'block' : 'none';
+    }
+
+    if (isWhisper && currentValue !== 'en' && currentValue !== 'original') {
+      targetLangEl.value = 'en';
+    }
   }
 
   function updateRangeLabels() {
@@ -68,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (methodEl) methodEl.value = result.translationMethod || 'chatgpt';
 
       updateMethodOption();
+      updateRangeLabels();
     }
   );
 
