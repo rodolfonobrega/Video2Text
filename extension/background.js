@@ -13,11 +13,10 @@ chrome.runtime.onConnect.addListener((port) => {
 
 async function handleTranscribe(data, port) {
   try {
-    // Set a timeout of 30 minutes (1800 seconds)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1800000);
 
-    const response = await fetch('http://localhost:8000/transcribe', {
+    const response = await fetch('http://127.0.0.1:8000/transcribe', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

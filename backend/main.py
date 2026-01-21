@@ -21,6 +21,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def log_request_size(request: Any, call_next: Any) -> Any:
+    try:
+        headers_size = sum(len(k) + len(v) for k, v in request.headers.items())
+        if headers_size > 8192:
+            print(f"WARNING: Large headers detected: {headers_size} bytes")
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        print(f"Request handling error: {e}")
+        raise
+
+
 # In-memory cache for subtitles (video_id -> vtt)
 subtitle_cache: Dict[str, Dict[str, Any]] = {}
 CACHE_MAX_SIZE = 1000
@@ -378,4 +392,10 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        limit_max_requests=100,
+        timeout_keep_alive=30,
+    )
