@@ -148,7 +148,7 @@ def set_cached_subtitle(video_id: str, vtt: str):
 
 def download_audio(video_url: str, output_path: str, progress_callback=None):
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio/best[ext=m4a]/bestaudio",
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -159,7 +159,20 @@ def download_audio(video_url: str, output_path: str, progress_callback=None):
         "outtmpl": output_path,
         "quiet": True,
         "no_warnings": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "referer": "https://www.youtube.com/",
+        "extractor_retries": 3,
+        "fragment_retries": 3,
+        "skip_unavailable_fragments": False,
+        "nocheckcertificate": True,
+        "http_chunk_size": 10485760,
     }
+
+    # Try with browser cookies first, fallback to without cookies
+    try:
+        ydl_opts["cookies_from_browser"] = ("chrome",)
+    except Exception:
+        pass
 
     if progress_callback:
 

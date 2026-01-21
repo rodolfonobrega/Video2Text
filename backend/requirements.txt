@@ -1,8 +1,7 @@
 fastapi
 uvicorn
-yt-dlp
+yt-dlp>=2024.1
 openai
 requests
 python-multipart
 black
-
