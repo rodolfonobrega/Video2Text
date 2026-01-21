@@ -141,6 +141,7 @@ const CACHE_PREFIX = 'yt_subtitles_cache_';
 const CACHE_EXPIRY_DAYS = 7;
 
 async function getCachedSubtitles(videoId) {
+  if (!chrome.storage || !chrome.storage.local) return null;
   try {
     const cacheKey = CACHE_PREFIX + videoId;
     const cached = await chrome.storage.local.get(cacheKey);
@@ -154,16 +155,25 @@ async function getCachedSubtitles(videoId) {
         return data.vtt;
       } else {
         console.log('AI Subtitles: Cache expired for', videoId);
-        await chrome.storage.local.remove(cacheKey);
+        try {
+          await chrome.storage.local.remove(cacheKey);
+        } catch (e) {
+          // Context invalidated, ignore
+        }
       }
     }
   } catch (error) {
+    if (error.message?.includes('Extension context invalidated')) {
+      console.log('AI Subtitles: Extension context invalidated, skipping cache read');
+      return null;
+    }
     console.warn('AI Subtitles: Cache read error:', error);
   }
   return null;
 }
 
 async function setCachedSubtitles(videoId, vtt) {
+  if (!chrome.storage || !chrome.storage.local) return;
   try {
     const cacheKey = CACHE_PREFIX + videoId;
     await chrome.storage.local.set({
@@ -174,11 +184,15 @@ async function setCachedSubtitles(videoId, vtt) {
     });
     console.log('AI Subtitles: Subtitles cached for', videoId);
   } catch (error) {
+    if (error.message?.includes('Extension context invalidated')) {
+      return;
+    }
     console.warn('AI Subtitles: Cache write error:', error);
   }
 }
 
 async function clearExpiredCache() {
+  if (!chrome.storage || !chrome.storage.local) return;
   try {
     const all = await chrome.storage.local.get(null);
     const now = Date.now();
@@ -417,6 +431,11 @@ async function generateSubtitles() {
 
   updateProgress('Checking settings...', 10);
 
+  if (!chrome.storage || !chrome.storage.local) {
+    showOverlay('Extension context invalidated. Please refresh the page.', 5000);
+    return;
+  }
+
   try {
     const { apiKey, baseUrl, targetLanguage, transcriptionModel, translationModel, translationMethod } =
       await chrome.storage.local.get([
@@ -601,12 +620,14 @@ function startSubtitleDisplay(cues) {
 
   if (subtitleInterval) clearInterval(subtitleInterval);
 
-  chrome.storage.local.get(['subtitlePosition', 'subtitleSize'], (settings) => {
-    const position = settings.subtitlePosition || 10;
-    const size = settings.subtitleSize || 24;
-    container.style.bottom = `${position}%`;
-    container.style.fontSize = `${size}px`;
-  });
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(['subtitlePosition', 'subtitleSize'], (settings) => {
+      const position = settings.subtitlePosition || 10;
+      const size = settings.subtitleSize || 24;
+      container.style.bottom = `${position}%`;
+      container.style.fontSize = `${size}px`;
+    });
+  }
 
   subtitleInterval = setInterval(() => {
     const time = video.currentTime;
