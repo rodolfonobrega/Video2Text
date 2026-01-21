@@ -22,6 +22,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function updateRangeLabels() {
+    const positionEl = document.getElementById('subtitlePosition');
+    const sizeEl = document.getElementById('subtitleSize');
+    const positionValue = document.getElementById('positionValue');
+    const sizeValue = document.getElementById('sizeValue');
+
+    if (positionEl && positionValue) {
+      positionValue.textContent = positionEl.value + '%';
+    }
+    if (sizeEl && sizeValue) {
+      sizeValue.textContent = sizeEl.value + 'px';
+    }
+  }
+
   if (methodEl) {
     methodEl.addEventListener('change', updateMethodOption);
   }
@@ -29,6 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (transcriptionModelEl) {
     transcriptionModelEl.addEventListener('change', updateMethodOption);
   }
+
+  document.getElementById('subtitlePosition')?.addEventListener('input', updateRangeLabels);
+  document.getElementById('subtitleSize')?.addEventListener('input', updateRangeLabels);
 
   // Load saved settings
   chrome.storage.local.get(
