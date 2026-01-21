@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-yt-dlp>=2024.1
-openai
-requests
+yt-dlp
+litellm
+groq
 python-multipart
-black
+pydantic>=2.0.0

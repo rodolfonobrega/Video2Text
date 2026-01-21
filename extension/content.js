@@ -49,13 +49,36 @@ function getVideoId(url) {
   return match ? match[1] : null;
 }
 
+// Helper to check if extension context is valid
+function isExtensionContextInvalid() {
+  try {
+    return !chrome.runtime.id;
+  } catch (e) {
+    return true;
+  }
+}
+
+function safeGet(callback, fallback = null) {
+  if (isExtensionContextInvalid()) return fallback;
+  try {
+    return callback();
+  } catch (e) {
+    if (e.message.includes('Extension context invalidated')) {
+      return fallback;
+    }
+    throw e;
+  }
+}
+
 // Backend availability check
 async function checkBackendAvailability() {
+  if (isExtensionContextInvalid()) return false;
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const response = await fetch('http://127.0.0.1:8000/health', {
+    const response = await fetch('http://127.0.0.1:8000/health', {
       method: 'GET',
       signal: controller.signal,
     });
@@ -69,14 +92,14 @@ async function checkBackendAvailability() {
 }
 
 // Progress bar overlay
-function showProgress(stage, progress, details = '') {
+function showProgress(stage, progress, details = '', customTitle = null) {
   let overlay = document.getElementById('ai-progress-overlay');
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'ai-progress-overlay';
     overlay.innerHTML = `
       <div id="ai-progress-content">
-        <div id="ai-progress-title">Generating Subtitles...</div>
+        <div id="ai-progress-title">AI Processing...</div>
         <div id="ai-progress-bar-container">
           <div id="ai-progress-bar"></div>
         </div>
@@ -90,9 +113,13 @@ function showProgress(stage, progress, details = '') {
   const bar = overlay.querySelector('#ai-progress-bar');
   const stageEl = overlay.querySelector('#ai-progress-stage');
   const detailsEl = overlay.querySelector('#ai-progress-details');
+  const titleEl = overlay.querySelector('#ai-progress-title');
 
   bar.style.width = `${progress}%`;
   stageEl.textContent = stage;
+  if (customTitle) {
+    titleEl.textContent = customTitle;
+  }
   if (details) {
     detailsEl.textContent = details;
     detailsEl.style.display = 'block';
@@ -103,14 +130,85 @@ function showProgress(stage, progress, details = '') {
   overlay.style.display = 'block';
 }
 
-function updateProgress(stage, progress, details = '') {
-  showProgress(stage, progress, details);
+function updateProgress(stage, progress, details = '', customTitle = null) {
+  showProgress(stage, progress, details, customTitle);
 }
 
 function hideProgress() {
   const overlay = document.getElementById('ai-progress-overlay');
   if (overlay) {
     overlay.style.display = 'none';
+  }
+}
+
+function showSummary(text) {
+  let summaryOverlay = document.getElementById('ai-summary-overlay');
+  if (!summaryOverlay) {
+    summaryOverlay = document.createElement('div');
+    summaryOverlay.id = 'ai-summary-overlay';
+    summaryOverlay.innerHTML = `
+      <div id="ai-summary-header">
+        <span>Video Summary</span>
+        <button id="ai-summary-close">×</button>
+      </div>
+      <div id="ai-summary-body"></div>
+    `;
+    document.body.appendChild(summaryOverlay);
+    document.getElementById('ai-summary-close').addEventListener('click', () => {
+      summaryOverlay.style.display = 'none';
+    });
+
+    // Tornar arrastável
+    makeDraggable(summaryOverlay);
+  }
+
+  const body = summaryOverlay.querySelector('#ai-summary-body');
+
+  // Usar marked para renderizar markdown
+  if (typeof marked !== 'undefined') {
+    body.innerHTML = marked.parse(text);
+  } else {
+    // Fallback simples
+    let html = text
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^- (.*)/gm, '• $1');
+    body.innerHTML = html;
+  }
+
+  summaryOverlay.style.display = 'block';
+}
+
+function makeDraggable(el) {
+  let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+  const header = el.querySelector('#ai-summary-header');
+  if (header) {
+    header.onmousedown = dragMouseDown;
+  }
+
+  function dragMouseDown(e) {
+    e.preventDefault();
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    document.onmouseup = closeDragElement;
+    document.onmousemove = elementDrag;
+  }
+
+  function elementDrag(e) {
+    e.preventDefault();
+    pos1 = pos3 - e.clientX;
+    pos2 = pos4 - e.clientY;
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    el.style.top = (el.offsetTop - pos2) + 'px';
+    el.style.left = (el.offsetLeft - pos1) + 'px';
+  }
+
+  function closeDragElement() {
+    document.onmouseup = null;
+    document.onmousemove = null;
   }
 }
 
@@ -141,6 +239,8 @@ const CACHE_PREFIX = 'yt_subtitles_cache_';
 const CACHE_EXPIRY_DAYS = 7;
 
 async function getCachedSubtitles(videoId) {
+  if (isExtensionContextInvalid()) return null;
+
   if (!chrome.storage || !chrome.storage.local) return null;
   try {
     const cacheKey = CACHE_PREFIX + videoId;
@@ -163,7 +263,7 @@ async function getCachedSubtitles(videoId) {
       }
     }
   } catch (error) {
-    if (error.message?.includes('Extension context invalidated')) {
+    if (error.message?.includes('Extension context invalidated') || isExtensionContextInvalid()) {
       console.log('AI Subtitles: Extension context invalidated, skipping cache read');
       return null;
     }
@@ -191,18 +291,81 @@ async function setCachedSubtitles(videoId, vtt) {
   }
 }
 
+const SUMMARY_CACHE_PREFIX = 'yt_summary_cache_';
+const SUMMARY_CACHE_EXPIRY_DAYS = 7;
+
+async function getCachedSummary(videoId, lang) {
+  if (isExtensionContextInvalid()) return null;
+
+  if (!chrome.storage || !chrome.storage.local) return null;
+  try {
+    const cacheKey = SUMMARY_CACHE_PREFIX + videoId + '_' + lang;
+    const cached = await chrome.storage.local.get(cacheKey);
+    if (cached[cacheKey]) {
+      const data = cached[cacheKey];
+      const now = Date.now();
+      const ageDays = (now - data.cachedAt) / (1000 * 60 * 60 * 24);
+
+      if (ageDays < SUMMARY_CACHE_EXPIRY_DAYS) {
+        console.log('AI Summary: Using cached summary for', videoId, 'lang:', lang);
+        return data.summary;
+      } else {
+        console.log('AI Summary: Cache expired for', videoId);
+        try {
+          await chrome.storage.local.remove(cacheKey);
+        } catch (e) {
+          // Context invalidated, ignore
+        }
+      }
+    }
+  } catch (error) {
+    if (error.message?.includes('Extension context invalidated') || isExtensionContextInvalid()) {
+      console.log('AI Summary: Extension context invalidated, skipping cache read');
+      return null;
+    }
+    console.warn('AI Summary: Cache read error:', error);
+  }
+  return null;
+}
+
+async function setCachedSummary(videoId, lang, summary) {
+  if (!chrome.storage || !chrome.storage.local) return;
+  try {
+    const cacheKey = SUMMARY_CACHE_PREFIX + videoId + '_' + lang;
+    await chrome.storage.local.set({
+      [cacheKey]: {
+        summary: summary,
+        cachedAt: Date.now(),
+      },
+    });
+    console.log('AI Summary: Summary cached for', videoId, 'lang:', lang);
+  } catch (error) {
+    if (error.message?.includes('Extension context invalidated')) {
+      return;
+    }
+    console.warn('AI Summary: Cache write error:', error);
+  }
+}
+
 async function clearExpiredCache() {
   if (!chrome.storage || !chrome.storage.local) return;
   try {
     const all = await chrome.storage.local.get(null);
     const now = Date.now();
-    const expiryMs = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    const subtitleExpiryMs = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    const summaryExpiryMs = SUMMARY_CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
     let removed = 0;
 
     for (const key of Object.keys(all)) {
       if (key.startsWith(CACHE_PREFIX)) {
         const data = all[key];
-        if (data.cachedAt && now - data.cachedAt > expiryMs) {
+        if (data.cachedAt && now - data.cachedAt > subtitleExpiryMs) {
+          await chrome.storage.local.remove(key);
+          removed++;
+        }
+      } else if (key.startsWith(SUMMARY_CACHE_PREFIX)) {
+        const data = all[key];
+        if (data.cachedAt && now - data.cachedAt > summaryExpiryMs) {
           await chrome.storage.local.remove(key);
           removed++;
         }
@@ -210,10 +373,10 @@ async function clearExpiredCache() {
     }
 
     if (removed > 0) {
-      console.log(`AI Subtitles: Removed ${removed} expired cache entries`);
+      console.log(`AI Cache: Removed ${removed} expired cache entries (subtitles + summaries)`);
     }
   } catch (error) {
-    console.warn('AI Subtitles: Cache cleanup error:', error);
+    console.warn('AI Cache: Cleanup error:', error);
   }
 }
 
@@ -263,6 +426,8 @@ let subtitlesVisible = false;
 let subtitleInterval = null;
 let currentVideoUrl = null;
 let currentVideoId = null;
+let cachedSummary = null;
+let summaryLanguage = null;
 
 function clearSubtitleState() {
   cachedSubtitles = null;
@@ -312,8 +477,9 @@ function injectButton() {
     return;
   }
 
-  console.log('AI Subtitles: Injecting button...');
+  console.log('AI Subtitles: Injecting buttons...');
 
+  // Subtitles button
   const btn = document.createElement('button');
   btn.id = 'ai-subtitle-btn';
   btn.className = 'ytp-button';
@@ -336,13 +502,39 @@ function injectButton() {
 
   btn.addEventListener('click', handleSubtitleButtonClick);
 
+  // Summary button
+  const summaryBtn = document.createElement('button');
+  summaryBtn.id = 'ai-summary-btn';
+  summaryBtn.className = 'ytp-button';
+  summaryBtn.innerHTML = `
+    <svg height="24px" version="1.1" viewBox="0 0 24 24" width="24px" fill="#fff">
+      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13V16H7V13H10V12H8V14H12V13H13M16,11V14H14V11H15V10H17V11H16Z"></path>
+    </svg>
+  `;
+  summaryBtn.title = 'Generate AI Summary';
+  summaryBtn.style.opacity = 1;
+  summaryBtn.style.cursor = 'pointer';
+
+  summaryBtn.style.display = 'inline-flex';
+  summaryBtn.style.alignItems = 'center';
+  summaryBtn.style.justifyContent = 'center';
+
+  summaryBtn.style.verticalAlign = 'middle';
+  summaryBtn.style.width = '48px';
+  summaryBtn.style.padding = '0';
+  summaryBtn.style.marginLeft = '4px';
+
+  summaryBtn.addEventListener('click', handleSummaryButtonClick);
+
   const settingsBtn = document.querySelector('.ytp-settings-button');
   if (settingsBtn && settingsBtn.parentNode === controls) {
     controls.insertBefore(btn, settingsBtn);
+    controls.insertBefore(summaryBtn, settingsBtn);
   } else {
     controls.insertBefore(btn, controls.firstChild);
+    controls.insertBefore(summaryBtn, controls.firstChild);
   }
-  console.log('AI Subtitles: Button injected successfully');
+  console.log('AI Subtitles: Buttons injected successfully');
 }
 
 async function handleSubtitleButtonClick() {
@@ -350,6 +542,232 @@ async function handleSubtitleButtonClick() {
     toggleSubtitleVisibility();
   } else {
     await generateSubtitles();
+  }
+}
+
+async function handleSummaryButtonClick() {
+  await generateSummary();
+}
+
+async function generateSummary() {
+  const btn = document.getElementById('ai-summary-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = 0.3;
+  }
+
+  updateProgress('Checking backend...', 5, '', 'Generating Summary');
+
+  const backendAvailable = await checkBackendAvailability();
+  if (!backendAvailable) {
+    hideProgress();
+    showOverlay(
+      'Backend not running!\n\n' +
+      'To start it:\n' +
+      '• Docker: make docker-up\n' +
+      '• Local: make dev\n\n' +
+      'Then refresh this page.',
+      10000
+    );
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = 1;
+    }
+    return;
+  }
+
+  updateProgress('Checking settings...', 10, '', 'Generating Summary');
+
+  if (isExtensionContextInvalid() || !chrome.storage || !chrome.storage.local) {
+    showOverlay('Extension updated. Please refresh the page.', 5000);
+    return;
+  }
+
+  try {
+    const { provider, openaiApiKey, groqApiKey, baseUrl, summaryLanguage, summarizationModel } =
+      await chrome.storage.local.get([
+        'provider',
+        'openaiApiKey',
+        'groqApiKey',
+        'baseUrl',
+        'summaryLanguage',
+        'summarizationModel',
+      ]);
+
+    console.log('AI Summary: Settings loaded:', {
+      provider,
+      summaryLanguage,
+      summarizationModel,
+    });
+
+    const apiKey = provider === 'groq' ? groqApiKey : openaiApiKey;
+
+    if (!apiKey) {
+      hideProgress();
+      showOverlay('Please set your API Key in the extension settings.', 5000);
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = 1;
+      }
+      return;
+    }
+
+    const videoUrl = window.location.href;
+    const videoId = getVideoId(videoUrl);
+
+    // Check for cached summary
+    if (videoId && summaryLanguage) {
+      const cachedSummary = await getCachedSummary(videoId, summaryLanguage);
+      if (cachedSummary) {
+        hideProgress();
+        showSummary(cachedSummary);
+        showOverlay('Cached Summary Loaded!', 2000);
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = 1;
+        }
+        return;
+      }
+    }
+
+    updateProgress('Preparing...', 15, '', 'Generating Summary');
+
+    const port = chrome.runtime.connect({ name: 'summary-port' });
+
+    const keepAliveInterval = setInterval(() => {
+      port.postMessage({ action: 'ping' });
+    }, 10000);
+
+    port.onMessage.addListener((response) => {
+      if (response.action === 'progress') {
+        const stageMessages = {
+          cached: 'Using cached transcription...',
+          downloading: 'Downloading Audio...',
+          transcribing: 'Transcribing for summary...',
+          summarizing: 'Generating Summary...',
+          complete: 'Complete!',
+        };
+
+        updateProgress(
+          stageMessages[response.stage] || response.stage,
+          response.progress,
+          response.details || '',
+          'Generating Summary'
+        );
+      } else if (response.action === 'summary_result') {
+        clearInterval(keepAliveInterval);
+        port.disconnect();
+
+        if (!response.success) {
+          hideProgress();
+          console.error(response.error);
+          showOverlay(`Error: ${response.error}`, 5000);
+          if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = 1;
+          }
+          return;
+        }
+
+        hideProgress();
+
+        if (response.data.summary) {
+          showSummary(response.data.summary);
+          
+          // Cache the summary (fire and forget)
+          if (videoId && summaryLanguage) {
+            setCachedSummary(videoId, summaryLanguage, response.data.summary).catch(err => {
+              console.warn('AI Summary: Failed to cache summary:', err);
+            });
+          }
+        }
+
+        showOverlay('Summary Ready!', 2000);
+
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = 1;
+        }
+      } else if (response.action === 'error') {
+        clearInterval(keepAliveInterval);
+        port.disconnect();
+        hideProgress();
+        console.error(response.error);
+
+        let errorMessage = response.error;
+        if (errorMessage.includes('503') || errorMessage.includes('API connection')) {
+          errorMessage =
+            'API connection failed.\n\nPossible causes:\n• Invalid API key\n• Rate limit exceeded\n• Network issues';
+        } else if (errorMessage.includes('400') || errorMessage.includes('validation')) {
+          errorMessage = 'Invalid request configuration.\nCheck your settings and try again.';
+        } else if (errorMessage.includes('401') || errorMessage.includes('authentication')) {
+          errorMessage = 'Authentication failed.\n\nCheck your API key in extension settings.';
+        }
+
+        showOverlay(`Error: ${errorMessage}`, 8000);
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = 1;
+        }
+      }
+    });
+
+    port.postMessage({
+      action: 'summarize',
+      data: {
+        video_url: videoUrl,
+        api_key: apiKey,
+        base_url: baseUrl || '',
+        summary_language: summaryLanguage || 'en',
+        summarization_model: summarizationModel || 'gpt-5-mini',
+        provider: provider || 'openai',
+      },
+    });
+
+    console.log('AI Subtitles: Sending summary request to backend');
+
+    port.onDisconnect.addListener(() => {
+      clearInterval(keepAliveInterval);
+      if (chrome.runtime.lastError) {
+        console.error('Port disconnected:', chrome.runtime.lastError);
+        hideProgress();
+        showOverlay('Connection lost. Please try again.', 5000);
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = 1;
+        }
+      }
+    });
+  } catch (err) {
+    hideProgress();
+    console.error(err);
+    let errorMessage = err.message;
+
+    if (err.name === 'TypeError' && errorMessage.includes('fetch')) {
+      showOverlay(
+        'Backend not running!\n\n' +
+        'To start it:\n' +
+        '• Docker: make docker-up\n' +
+        '• Local: make dev\n\n' +
+        'Then try again.',
+        10000
+      );
+    } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+      showOverlay(
+        'Cannot connect to backend.\n\n' +
+        'Make sure the backend is running:\n' +
+        '• Docker: make docker-up\n' +
+        '• Local: make dev',
+        8000
+      );
+    } else {
+      showOverlay(`Error: ${errorMessage}`, 5000);
+    }
+
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = 1;
+    }
   }
 }
 
@@ -396,10 +814,10 @@ async function generateSubtitles() {
     hideProgress();
     showOverlay(
       'Backend not running!\n\n' +
-        'To start it:\n' +
-        '• Docker: make docker-up\n' +
-        '• Local: make dev\n\n' +
-        'Then refresh this page.',
+      'To start it:\n' +
+      '• Docker: make docker-up\n' +
+      '• Local: make dev\n\n' +
+      'Then refresh this page.',
       10000
     );
     if (btn) {
@@ -431,21 +849,33 @@ async function generateSubtitles() {
 
   updateProgress('Checking settings...', 10);
 
-  if (!chrome.storage || !chrome.storage.local) {
-    showOverlay('Extension context invalidated. Please refresh the page.', 5000);
+  if (isExtensionContextInvalid() || !chrome.storage || !chrome.storage.local) {
+    showOverlay('Extension updated. Please refresh the page.', 5000);
     return;
   }
 
   try {
-    const { apiKey, baseUrl, targetLanguage, transcriptionModel, translationModel, translationMethod } =
+    const { provider, openaiApiKey, groqApiKey, baseUrl, targetLanguage, transcriptionModel, translationModel } =
       await chrome.storage.local.get([
-        'apiKey',
+        'provider',
+        'openaiApiKey',
+        'groqApiKey',
         'baseUrl',
         'targetLanguage',
         'transcriptionModel',
         'translationModel',
-        'translationMethod',
       ]);
+
+    const apiKey = provider === 'groq' ? groqApiKey : openaiApiKey;
+
+    console.log('AI Subtitles: Settings loaded:', {
+      provider,
+      apiKey: apiKey ? '***' : 'missing',
+      baseUrl,
+      targetLanguage,
+      transcriptionModel,
+      translationModel,
+    });
 
     if (!apiKey) {
       hideProgress();
@@ -459,13 +889,13 @@ async function generateSubtitles() {
 
     const videoUrl = window.location.href;
 
-    updateProgress('Starting transcription...', 15);
+    updateProgress('Preparing...', 15);
 
     const port = chrome.runtime.connect({ name: 'transcription-port' });
 
     const keepAliveInterval = setInterval(() => {
       port.postMessage({ action: 'ping' });
-    }, 25000);
+    }, 10000);
 
     let progressStage = 'downloading';
     let progressValue = 15;
@@ -476,9 +906,10 @@ async function generateSubtitles() {
         progressStage = response.stage;
 
         const stageMessages = {
-          downloading: 'Downloading audio...',
+          downloading: 'Downloading Audio (yt-dlp)...',
           transcribing: 'Transcribing with AI...',
-          translating: 'Translating...',
+          translating: 'Translating Subtitles...',
+          summarizing: 'Generating Summary...',
           complete: 'Complete!',
         };
 
@@ -513,7 +944,12 @@ async function generateSubtitles() {
         subtitlesVisible = true;
         startSubtitleDisplay(cues);
         hideProgress();
-        showOverlay('Subtitles Ready!', 2000);
+
+        if (response.data.summary) {
+          showSummary(response.data.summary);
+        } else {
+          showOverlay('Subtitles Ready!', 2000);
+        }
 
         if (btn) {
           btn.disabled = false;
@@ -549,13 +985,15 @@ async function generateSubtitles() {
       data: {
         video_url: videoUrl,
         api_key: apiKey,
-        base_url: baseUrl || 'https://api.openai.com/v1',
+        base_url: baseUrl || '',
         target_language: targetLanguage || 'en',
         transcription_model: transcriptionModel || 'whisper-1',
-        translation_model: translationModel || 'gpt-4o-mini',
-        translation_method: translationMethod || 'chatgpt',
+        translation_model: translationModel || 'gpt-5-nano',
+        provider: provider || 'openai',
       },
     });
+
+    console.log('AI Subtitles: Sending request to backend');
 
     port.onDisconnect.addListener(() => {
       clearInterval(keepAliveInterval);
@@ -577,18 +1015,18 @@ async function generateSubtitles() {
     if (err.name === 'TypeError' && errorMessage.includes('fetch')) {
       showOverlay(
         'Backend not running!\n\n' +
-          'To start it:\n' +
-          '• Docker: make docker-up\n' +
-          '• Local: make dev\n\n' +
-          'Then try again.',
+        'To start it:\n' +
+        '• Docker: make docker-up\n' +
+        '• Local: make dev\n\n' +
+        'Then try again.',
         10000
       );
     } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
       showOverlay(
         'Cannot connect to backend.\n\n' +
-          'Make sure the backend is running:\n' +
-          '• Docker: make docker-up\n' +
-          '• Local: make dev',
+        'Make sure the backend is running:\n' +
+        '• Docker: make docker-up\n' +
+        '• Local: make dev',
         8000
       );
     } else {
@@ -671,13 +1109,23 @@ injectionInterval = setInterval(() => {
   injectButton();
 }, 2000);
 
-// Clean up on page unload
-window.addEventListener('unload', cleanup);
+// Clean up on page hide (modern replacement for unload)
+window.addEventListener('pagehide', cleanup);
 
 // Initial check and cache cleanup
 currentVideoUrl = window.location.href;
 currentVideoId = getVideoId(currentVideoUrl);
 injectButton();
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'clear-local-state') {
+    console.log('AI Subtitles: Clearing local state as requested by popup');
+    clearSubtitleState();
+    showOverlay('Cache Cleared! Ready to regenerate.', 2000);
+    sendResponse({ success: true });
+  }
+});
 
 // Clean expired cache on startup (10% chance)
 if (Math.random() < 0.1) {

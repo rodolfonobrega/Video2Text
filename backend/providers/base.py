@@ -29,6 +29,19 @@ class TranscriptionProvider(ABC):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
+        **kwargs,
+    ) -> str:
+        pass
+
+    @abstractmethod
+    async def summarize(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
         **kwargs,
     ) -> str:
         pass

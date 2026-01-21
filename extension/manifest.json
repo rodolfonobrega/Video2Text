@@ -29,6 +29,7 @@
                 "*://*.youtube.com/watch*"
             ],
             "js": [
+                "marked.umd.js",
                 "content.js"
             ],
             "css": [

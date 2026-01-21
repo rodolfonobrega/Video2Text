@@ -9,6 +9,10 @@
     "ecmaVersion": "latest",
     "sourceType": "module"
   },
+  "ignorePatterns": ["marked.umd.js"],
+  "globals": {
+    "marked": "readonly"
+  },
   "rules": {
     "no-unused-vars": "warn",
     "no-console": "off",
