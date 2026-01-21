@@ -429,8 +429,7 @@ async function generateSubtitles() {
 
     if (!apiKey) {
       hideProgress();
-      alert('Please set your API Key in the extension settings.');
-      hideOverlay();
+      showOverlay('Please set your API Key in the extension settings.', 5000);
       if (btn) {
         btn.disabled = false;
         btn.style.opacity = 1;
@@ -600,6 +599,13 @@ function startSubtitleDisplay(cues) {
 
   if (subtitleInterval) clearInterval(subtitleInterval);
 
+  chrome.storage.local.get(['subtitlePosition', 'subtitleSize'], (settings) => {
+    const position = settings.subtitlePosition || 10;
+    const size = settings.subtitleSize || 24;
+    container.style.bottom = `${position}%`;
+    container.style.fontSize = `${size}px`;
+  });
+
   subtitleInterval = setInterval(() => {
     const time = video.currentTime;
     const activeCue = cues.find((c) => time >= c.start && time <= c.end);
@@ -613,8 +619,23 @@ function startSubtitleDisplay(cues) {
   }, 100);
 }
 
+function cleanup() {
+  clearSubtitleState();
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  if (injectionInterval) {
+    clearInterval(injectionInterval);
+    injectionInterval = null;
+  }
+}
+
+let observer = null;
+let injectionInterval = null;
+
 // Observer to handle navigation (SPA)
-const observer = new MutationObserver(() => {
+observer = new MutationObserver(() => {
   checkVideoChange();
   injectButton();
 });
@@ -622,10 +643,13 @@ const observer = new MutationObserver(() => {
 observer.observe(document.body, { childList: true, subtree: true });
 
 // Robust injection interval
-setInterval(() => {
+injectionInterval = setInterval(() => {
   checkVideoChange();
   injectButton();
 }, 2000);
+
+// Clean up on page unload
+window.addEventListener('unload', cleanup);
 
 // Initial check and cache cleanup
 currentVideoUrl = window.location.href;

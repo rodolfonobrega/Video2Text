@@ -75,6 +75,18 @@
         color: #7f8c8d;
         margin-top: 5px;
       }
+
+      .error {
+        font-size: 11px;
+        color: #e74c3c;
+        margin-top: 5px;
+        min-height: 15px;
+      }
+
+      input[type='range'] {
+        width: 100%;
+        margin-top: 5px;
+      }
     </style>
   </head>
 
@@ -84,6 +96,7 @@
     <div class="form-group">
       <label for="apiKey">API Key</label>
       <input type="password" id="apiKey" placeholder="sk-..." />
+      <div id="apiKeyError" class="error"></div>
     </div>
 
     <div class="form-group">
@@ -92,7 +105,6 @@
         type="text"
         id="baseUrl"
         placeholder="https://api.openai.com/v1"
-        value="https://api.openai.com/v1"
       />
       <div class="note">Use https://openrouter.ai/api/v1 for OpenRouter</div>
     </div>
@@ -128,6 +140,18 @@
         <option value="ko">Korean</option>
         <option value="zh">Chinese</option>
       </select>
+    </div>
+
+    <div class="form-group">
+      <label for="subtitlePosition">Subtitle Position (%)</label>
+      <input type="range" id="subtitlePosition" min="5" max="50" value="10" />
+      <div class="note">Bottom position (5-50%)</div>
+    </div>
+
+    <div class="form-group">
+      <label for="subtitleSize">Subtitle Size (px)</label>
+      <input type="range" id="subtitleSize" min="12" max="48" value="24" />
+      <div class="note">Font size (12-48px)</div>
     </div>
 
     <button id="saveBtn">Save Settings</button>

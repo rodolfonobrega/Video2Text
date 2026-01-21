@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 import time
 import uuid
 from typing import Optional, Dict, Any
@@ -24,6 +25,7 @@ app.add_middleware(
 subtitle_cache: Dict[str, Dict[str, Any]] = {}
 CACHE_MAX_SIZE = 1000
 CACHE_EXPIRY_HOURS = 24 * 7  # 7 days
+MAX_AUDIO_SIZE_BYTES = 24 * 1024 * 1024  # 24MB (OpenAI limit is 25MB)
 
 
 class TranscribeRequest(BaseModel):
@@ -174,6 +176,39 @@ def download_audio(video_url: str, output_path: str, progress_callback=None):
     raise Exception("Audio file not found after download")
 
 
+def compress_audio(input_path: str, output_path: str, max_size_bytes: int = MAX_AUDIO_SIZE_BYTES):
+    """Compress audio file using FFmpeg to reduce size below max_size_bytes"""
+    print(f"Compressing audio (file too large)...")
+    
+    # Try progressively lower bitrates until file is small enough
+    bitrates = ["128k", "96k", "64k", "48k"]
+    
+    for bitrate in bitrates:
+        print(f"  Trying {bitrate}...")
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-i", input_path,
+            "-b:a", bitrate,
+            "-ar", "16000",
+            "-ac", "1",
+            "-y",
+            output_path
+        ]
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"FFmpeg compression failed: {result.stderr}")
+        
+        if os.path.exists(output_path) and get_file_size(output_path) < max_size_bytes:
+            print(f"  Compression successful at {bitrate}")
+            return
+    
+    raise Exception(f"Could not compress audio below {max_size_bytes} bytes")
+
+
+def get_file_size(path: str) -> int:
+    return os.path.getsize(path)
+
+
 def format_timestamp(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -270,6 +305,17 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
         print(f"Downloading audio from {request.video_url}...")
         audio_path = download_audio(request.video_url, audio_path, progress_callback)
         print(f"Audio downloaded to {audio_path}")
+
+        # Check file size and compress if necessary
+        if os.path.exists(audio_path):
+            file_size = get_file_size(audio_path)
+            if file_size > MAX_AUDIO_SIZE_BYTES:
+                compressed_path = f"temp_audio_{uuid.uuid4().hex[:8]}.mp3"
+                compress_audio(audio_path, compressed_path)
+                # Remove original file
+                os.remove(audio_path)
+                audio_path = compressed_path
+                print(f"Compressed audio file size: {get_file_size(audio_path)} bytes")
 
         print(f"Transcribing with {request.provider}/{transcription_model}...")
         final_vtt = await provider.transcribe(
