@@ -39,6 +39,13 @@ class TranscribeRequest(BaseModel):
     provider: str = "openai"
     check_cache: bool = True
 
+    @field_validator("translation_method")
+    def validate_translation_method(cls, v, info):
+        transcription_model = info.data.get("transcription_model")
+        if v == "whisper" and transcription_model and transcription_model != "whisper-1":
+            raise ValueError("Whisper native translation is only supported with whisper-1 model")
+        return v
+
     @field_validator("api_key")
     def validate_api_key(cls, v):
         if not v or len(v) < 10:

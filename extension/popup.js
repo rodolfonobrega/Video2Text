@@ -1,6 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
   const API_KEY_REGEX = /^sk-[a-zA-Z0-9-_]+$/;
 
+  const transcriptionModelEl = document.getElementById('transcriptionModel');
+  const methodEl = document.getElementById('translationMethod');
+
+  function updateMethodOption() {
+    const isWhisper1 = transcriptionModelEl && transcriptionModelEl.value === 'whisper-1';
+    if (methodEl) {
+      const whisperOption = methodEl.querySelector('option[value="whisper"]');
+      if (whisperOption) {
+        whisperOption.disabled = !isWhisper1;
+        if (!isWhisper1 && methodEl.value === 'whisper') {
+          methodEl.value = 'chatgpt';
+        }
+      }
+    }
+  }
+
+  if (transcriptionModelEl) {
+    transcriptionModelEl.addEventListener('change', updateMethodOption);
+  }
+
   // Load saved settings
   chrome.storage.local.get(
     ['apiKey', 'baseUrl', 'targetLanguage', 'transcriptionModel', 'translationModel', 'subtitlePosition', 'subtitleSize', 'translationMethod'],
@@ -8,11 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const apiKeyEl = document.getElementById('apiKey');
       const baseUrlEl = document.getElementById('baseUrl');
       const targetLanguageEl = document.getElementById('targetLanguage');
-      const transcriptionModelEl = document.getElementById('transcriptionModel');
       const translationModelEl = document.getElementById('translationModel');
       const positionEl = document.getElementById('subtitlePosition');
       const sizeEl = document.getElementById('subtitleSize');
-      const methodEl = document.getElementById('translationMethod');
 
       if (apiKeyEl) apiKeyEl.value = result.apiKey || '';
       if (baseUrlEl) baseUrlEl.value = result.baseUrl || 'https://api.openai.com/v1';
@@ -22,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (positionEl) positionEl.value = result.subtitlePosition || '10';
       if (sizeEl) sizeEl.value = result.subtitleSize || '24';
       if (methodEl) methodEl.value = result.translationMethod || 'chatgpt';
+
+      updateMethodOption();
     }
   );
 
