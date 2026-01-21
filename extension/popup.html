@@ -115,9 +115,9 @@
         type="text"
         id="transcriptionModel"
         placeholder="whisper-1"
-        value="gpt-4o-mini-transcribe"
+        value="whisper-1"
       />
-      <div class="note">e.g., whisper-1, gpt-4o-mini-transcribe</div>
+      <div class="note">Use whisper-1 for Whisper Native translation. Other models require ChatGPT translation.</div>
     </div>
 
     <div class="form-group">
@@ -145,10 +145,10 @@
     <div class="form-group">
       <label for="translationMethod">Translation Method</label>
       <select id="translationMethod">
-        <option value="chatgpt">ChatGPT (Any language, slower)</option>
-        <option value="whisper">Whisper (Only English, faster/cheaper)</option>
+        <option value="chatgpt">ChatGPT (Transcribe any model → Translate to any language)</option>
+        <option value="whisper">Whisper Native (Transcribe + Translate to English, whisper-1 only)</option>
       </select>
-      <div class="note">Whisper native is faster and cheaper but only supports English. Requires whisper-1 model.</div>
+      <div class="note">Whisper Native: 1 API call, faster/cheaper, English only. ChatGPT: 2 calls, any language.</div>
     </div>
 
     <div class="form-group">
