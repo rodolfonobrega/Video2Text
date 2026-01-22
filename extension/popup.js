@@ -93,11 +93,12 @@ document.addEventListener('DOMContentLoaded', () => {
     populateModelDropdowns(provider);
   }
 
-  async function loadModels() {
+  async function loadModels(savedTranscription, savedTranslation, savedSummarization) {
     try {
       const response = await fetch(`${BACKEND_URL}/models`);
       if (!response.ok) {
         console.error('Failed to load models from API');
+        populateModelDropdowns(providerEl?.value || 'groq', true, savedTranscription, savedTranslation, savedSummarization);
         return;
       }
 
@@ -113,22 +114,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Popular dropdowns com o provider atual
       const currentProvider = providerEl?.value || 'groq';
-      populateModelDropdowns(currentProvider);
-      applyProviderDefaults(); // Aplicar defaults após carregar modelos
+      populateModelDropdowns(currentProvider, false, savedTranscription, savedTranslation, savedSummarization);
     } catch (error) {
       console.error('Error loading models:', error);
-      // Fallback: usar valores padrão se API falhar
-      populateModelDropdowns(providerEl?.value || 'groq', true);
-      applyProviderDefaults(); // Aplicar defaults mesmo com fallback
+      populateModelDropdowns(providerEl?.value || 'groq', true, savedTranscription, savedTranslation, savedSummarization);
     }
   }
 
-  function populateModelDropdowns(provider, useFallback = false) {
+  function populateModelDropdowns(provider, useFallback = false, savedTranscription = null, savedTranslation = null, savedSummarization = null) {
     if (!transcriptionModelEl || !translationModelEl || !summarizationModelEl) return;
-
-    const currentTranscription = transcriptionModelEl.value;
-    const currentTranslation = translationModelEl.value;
-    const currentSummarization = summarizationModelEl.value;
 
     // Popular dropdown de transcrição
     transcriptionModelEl.innerHTML = '';
@@ -150,9 +144,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Restaurar seleção anterior se disponível
-    if (currentTranscription && Array.from(transcriptionModelEl.options).some(opt => opt.value === currentTranscription)) {
-      transcriptionModelEl.value = currentTranscription;
+    // Prioridade: saved > stored > default
+    if (savedTranscription && Array.from(transcriptionModelEl.options).some(opt => opt.value === savedTranscription)) {
+      transcriptionModelEl.value = savedTranscription;
     } else {
       transcriptionModelEl.value = PROVIDER_DEFAULTS[provider]?.transcriptionModel || transcriptionModelEl.options[0]?.value;
     }
@@ -191,6 +185,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // Prioridade: saved > stored > default
+    if (savedTranslation && Array.from(translationModelEl.options).some(opt => opt.value === savedTranslation)) {
+      translationModelEl.value = savedTranslation;
+    } else {
+      translationModelEl.value = PROVIDER_DEFAULTS[provider]?.translationModel || translationModelEl.options[0]?.value;
+    }
+
     // Popular dropdown de resumo
     summarizationModelEl.innerHTML = '';
     // Para o resumo, usamos os mesmos modelos de tradução
@@ -203,16 +204,9 @@ document.addEventListener('DOMContentLoaded', () => {
       summarizationModelEl.appendChild(option);
     });
 
-    // Restaurar seleção anterior para tradução
-    if (currentTranslation && Array.from(translationModelEl.options).some(opt => opt.value === currentTranslation)) {
-      translationModelEl.value = currentTranslation;
-    } else {
-      translationModelEl.value = PROVIDER_DEFAULTS[provider]?.translationModel || translationModelEl.options[0]?.value;
-    }
-
-    // Restaurar seleção anterior para resumo
-    if (currentSummarization && Array.from(summarizationModelEl.options).some(opt => opt.value === currentSummarization)) {
-      summarizationModelEl.value = currentSummarization;
+    // Prioridade: saved > stored > default
+    if (savedSummarization && Array.from(summarizationModelEl.options).some(opt => opt.value === savedSummarization)) {
+      summarizationModelEl.value = savedSummarization;
     } else {
       summarizationModelEl.value = PROVIDER_DEFAULTS[provider]?.summarizationModel || summarizationModelEl.options[0]?.value;
     }
@@ -327,28 +321,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // ATUALIZAÇÃO CRÍTICA: Sincronizar UI após carregar o provider
       updateProviderUI();
 
-      if (transcriptionModelEl) {
-        const defaultTranscription = PROVIDER_DEFAULTS[providerEl?.value || 'groq']?.transcriptionModel || 'whisper-large-v3-turbo';
-        transcriptionModelEl.value = result.transcriptionModel || defaultTranscription;
-      }
-
-      if (translationModelEl) {
-        const defaultTranslation = PROVIDER_DEFAULTS[providerEl?.value || 'groq']?.translationModel || 'openai/gpt-oss-20b';
-        translationModelEl.value = result.translationModel || defaultTranslation;
-      }
-
-      if (summarizationModelEl) {
-        const defaultSummary = PROVIDER_DEFAULTS[providerEl?.value || 'groq']?.summarizationModel || 'openai/gpt-oss-20b';
-        summarizationModelEl.value = result.summarizationModel || defaultSummary;
-      }
+      // Carregar modelos PRIMEIRO (antes de setar valores salvos)
+      loadModels(result.transcriptionModel, result.translationModel, result.summarizationModel);
 
       if (positionEl) positionEl.value = result.subtitlePosition || '10';
       if (sizeEl) sizeEl.value = result.subtitleSize || '24';
 
       updateRangeLabels();
-
-      // Carregar modelos COM os dados do storage já setados
-      loadModels();
     }
   );
 

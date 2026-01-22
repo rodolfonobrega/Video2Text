@@ -240,28 +240,28 @@ function setupSummaryPanelEvents(panel) {
     const content = panel.querySelector('#ai-summary-content');
 
     switch (action) {
-      case 'copy': {
-        const textToCopy = content.innerText;
-        try {
-          await navigator.clipboard.writeText(textToCopy);
-          showSummaryToast('Copied to clipboard!');
-        } catch (err) {
-          showSummaryToast('Failed to copy');
-        }
-        break;
+    case 'copy': {
+      const textToCopy = content.innerText;
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        showSummaryToast('Copied to clipboard!');
+      } catch (err) {
+        showSummaryToast('Failed to copy');
       }
+      break;
+    }
 
-      case 'font-decrease':
-        adjustSummaryFont(content, -1);
-        break;
+    case 'font-decrease':
+      adjustSummaryFont(content, -1);
+      break;
 
-      case 'font-increase':
-        adjustSummaryFont(content, 1);
-        break;
+    case 'font-increase':
+      adjustSummaryFont(content, 1);
+      break;
 
-      case 'collapse':
-        toggleSummaryCollapse(panel, content);
-        break;
+    case 'collapse':
+      toggleSummaryCollapse(panel, content);
+      break;
     }
   });
 }
