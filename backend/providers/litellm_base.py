@@ -127,6 +127,7 @@ class LiteLLMProvider(TranscriptionProvider):
             "api_key": api_key,
             "response_format": "verbose_json",
             "timeout": self.get_timeout(),
+            "reasoning_effort": None,  # Disable reasoning for all models
         }
     
     def get_translation_params(self, model: str, api_key: str, base_url: str) -> dict:
@@ -138,6 +139,7 @@ class LiteLLMProvider(TranscriptionProvider):
             "api_key": api_key,
             "temperature": 0.1,
             "timeout": self.get_timeout(),
+            "reasoning_effort": None,  # Disable reasoning for all models
         }
         
         # Usar structured output se habilitado para este modelo específico
@@ -351,6 +353,7 @@ class LiteLLMProvider(TranscriptionProvider):
                 ],
                 api_key=api_key,
                 timeout=self.get_timeout(),
+                reasoning_effort=None,  # Disable reasoning for all models
             )
             return response.choices[0].message.content
         except Exception as e:
