@@ -194,7 +194,7 @@ function showSummary(text) {
       .replace(/^- (.*)/gm, '• $1');
   }
   
-  injectSummaryPanel();
+  injectSummaryPanel(panel);
   panel.classList.add('visible');
   panel.querySelector('#ai-summary-content').classList.remove('collapsed');
   
@@ -309,8 +309,7 @@ function showSummaryToast(message) {
   }, 2000);
 }
 
-function injectSummaryPanel() {
-  const panel = document.getElementById('ai-summary-panel');
+function injectSummaryPanel(panel) {
   console.log('[AI Summary] injectSummaryPanel called');
   console.log('[AI Summary] Panel element:', panel);
   console.log('[AI Summary] Panel parent:', panel?.parentNode);
