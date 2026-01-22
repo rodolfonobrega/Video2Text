@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
 
 
@@ -43,7 +43,7 @@ class TranscriptionProvider(ABC):
         api_key: str,
         base_url: str,
         **kwargs,
-    ) -> str:
+    ) -> Dict[str, Any]:
         pass
 
     def supports_timestamps(self, model: str) -> bool:

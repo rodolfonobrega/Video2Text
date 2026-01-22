@@ -347,3 +347,59 @@
   padding-left: 16px;
   color: var(--yt-spec-text-secondary, #606060);
 }
+
+/* Key Moments Section */
+.ai-summary-moments {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.1));
+}
+
+.ai-summary-moments h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  margin: 0 0 12px 0;
+}
+
+.ai-moments-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ai-moment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: var(--yt-spec-general-background-a, #f9f9f9);
+  transition: background-color 0.2s;
+}
+
+.ai-moment-item:hover {
+  background: var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.1));
+}
+
+.ai-moment-item:active {
+  background: var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.15));
+}
+
+.ai-moment-time {
+  flex-shrink: 0;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: #065fd4;
+  background: rgba(6, 95, 212, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.ai-moment-desc {
+  font-size: 13px;
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  line-height: 1.4;
+}

@@ -448,7 +448,7 @@ async def summarize_video(request: SummarizeRequest):
                         await queue.put(None)
                         return
 
-                    summary = await provider.summarize(
+                    summary_result = await provider.summarize(
                         transcript=full_text,
                         target_language=request.summary_language,
                         model=request.summarization_model,
@@ -456,13 +456,17 @@ async def summarize_video(request: SummarizeRequest):
                         base_url=request.base_url,
                     )
 
+                    summary_text = summary_result.get('summary', '')
+                    key_moments = summary_result.get('key_moments', [])
+
                     await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 100, "details": "Summary complete"}) + "\n")
 
                     await queue.put(json.dumps({
                         "action": "summary_result",
                         "success": True,
                         "data": {
-                            "summary": summary,
+                            "summary": summary_text,
+                            "key_moments": key_moments,
                             "video_id": video_id,
                             "cached": True
                         }
@@ -515,13 +519,17 @@ async def summarize_video(request: SummarizeRequest):
                 
                 await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 75, "details": "Generating summary..."}) + "\n")
 
-                summary = await provider.summarize(
+                summary_result = await provider.summarize(
                     transcript=full_text,
                     target_language=request.summary_language,
                     model=request.summarization_model,
                     api_key=request.api_key,
                     base_url=request.base_url,
                 )
+
+                # Extract summary and key_moments from the structured response
+                summary_text = summary_result.get('summary', '')
+                key_moments = summary_result.get('key_moments', [])
 
                 await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 100, "details": "Summary complete"}) + "\n")
 
@@ -533,7 +541,8 @@ async def summarize_video(request: SummarizeRequest):
                     "action": "summary_result",
                     "success": True,
                     "data": {
-                        "summary": summary,
+                        "summary": summary_text,
+                        "key_moments": key_moments,
                         "video_id": video_id,
                         "cached": False
                     }

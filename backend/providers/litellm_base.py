@@ -307,8 +307,11 @@ class LiteLLMProvider(TranscriptionProvider):
         api_key: str,
         base_url: str,
         **kwargs,
-    ) -> str:
-        """Gera um resumo do transcrito usando LiteLLM."""
+    ) -> dict:
+        """
+        Gera um resumo estruturado do transcrito usando LiteLLM.
+        Returns dict with 'summary' and 'key_moments' fields.
+        """
         print(f"[DEBUG] Summarize called with target_language: {target_language}, model: {model}")
         provider_prefix = self.get_name()
         
@@ -336,7 +339,7 @@ class LiteLLMProvider(TranscriptionProvider):
         system_prompt = format_prompt(system_prompt, target_language=lang_name)
         
         user_prompt = load_prompt('summary_user')
-        user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:10000])
+        user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:15000])
         
         try:
             response = await litellm.acompletion(
@@ -354,8 +357,30 @@ class LiteLLMProvider(TranscriptionProvider):
                 api_key=api_key,
                 timeout=self.get_timeout(),
                 reasoning_effort=None,  # Disable reasoning for all models
+                response_format={"type": "json_object"},
             )
-            return response.choices[0].message.content
+            
+            # Parse the JSON response
+            content = response.choices[0].message.content
+            try:
+                import json as json_module
+                data = json_module.loads(content)
+                summary = data.get('summary', content)
+                key_moments = data.get('key_moments', [])
+                print(f"[DEBUG] Summary generated with {len(key_moments)} key moments")
+                return {
+                    'summary': summary,
+                    'key_moments': key_moments
+                }
+            except json_module.JSONDecodeError:
+                print(f"[WARN] Failed to parse summary as JSON, returning raw content")
+                return {
+                    'summary': content,
+                    'key_moments': []
+                }
         except Exception as e:
             print(f"[ERROR] Summarization failed: {e}")
-            return f"Error during summarization: {e}"
+            return {
+                'summary': f"Error during summarization: {e}",
+                'key_moments': []
+            }

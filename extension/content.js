@@ -141,8 +141,11 @@ function hideProgress() {
   }
 }
 
-function showSummary(text) {
-  console.log('[AI Summary] showSummary called');
+function showSummary(data) {
+  console.log('[AI Summary] showSummary called', data);
+  
+  const summaryText = typeof data === 'string' ? data : (data.summary || '');
+  const keyMoments = data.key_moments || [];
 
   let panel = document.getElementById('ai-summary-panel');
   console.log('[AI Summary] Panel exists:', !!panel);
@@ -182,17 +185,56 @@ function showSummary(text) {
   }
 
   const content = panel.querySelector('#ai-summary-content');
-
+  
+  // Build HTML with summary and clickable key moments
+  let html = '';
+  
+  // Summary section
+  html += '<div class="ai-summary-text">';
   if (typeof marked !== 'undefined') {
-    content.innerHTML = marked.parse(text);
+    html += marked.parse(summaryText);
   } else {
-    content.innerHTML = text
+    html += summaryText
       .replace(/\n\n/g, '<br><br>')
       .replace(/\n/g, '<br>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/^- (.*)/gm, '• $1');
   }
+  html += '</div>';
+  
+  // Key moments section
+  if (keyMoments.length > 0) {
+    html += '<div class="ai-summary-moments">';
+    html += '<h3>Key Moments</h3>';
+    html += '<ul class="ai-moments-list">';
+    
+    keyMoments.forEach((moment, index) => {
+      const timestamp = moment.timestamp || '00:00';
+      const description = moment.description || '';
+      html += `
+        <li class="ai-moment-item" data-timestamp="${timestamp}">
+          <span class="ai-moment-time">${timestamp}</span>
+          <span class="ai-moment-desc">${description}</span>
+        </li>
+      `;
+    });
+    
+    html += '</ul>';
+    html += '</div>';
+  }
+  
+  content.innerHTML = html;
+
+  // Add click handlers for key moments
+  content.querySelectorAll('.ai-moment-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const timestamp = item.dataset.timestamp;
+      seekToTimestamp(timestamp);
+    });
+    item.style.cursor = 'pointer';
+    item.title = 'Click to jump to this moment';
+  });
 
   injectSummaryPanel(panel);
 
@@ -205,6 +247,39 @@ function showSummary(text) {
     console.log('[AI Summary] Panel display:', window.getComputedStyle(panel).display);
     console.log('[AI Summary] Panel parent:', panel.parentNode);
   });
+}
+
+function seekToTimestamp(timestamp) {
+  // Parse MM:SS or HH:MM:SS format
+  const parts = timestamp.split(':').map(Number);
+  let seconds = 0;
+  
+  if (parts.length === 2) {
+    // MM:SS
+    seconds = parts[0] * 60 + parts[1];
+  } else if (parts.length === 3) {
+    // HH:MM:SS
+    seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  
+  console.log('[AI Summary] Seeking to timestamp:', timestamp, '=', seconds, 'seconds');
+  
+  // Find YouTube video element and seek
+  const video = document.querySelector('video.html5-main-video');
+  if (video) {
+    video.currentTime = seconds;
+    video.play().catch(() => {});
+    showSummaryToast(`Jumped to ${timestamp}`);
+  } else {
+    // Try alternative selectors
+    const player = document.querySelector('.html5-video-player');
+    if (player && player.seekTo) {
+      player.seekTo(seconds);
+      showSummaryToast(`Jumped to ${timestamp}`);
+    } else {
+      showSummaryToast('Could not find video player');
+    }
+  }
 }
 
 function loadSummaryPreferences(panel) {
