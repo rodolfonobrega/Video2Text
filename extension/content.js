@@ -142,9 +142,13 @@ function hideProgress() {
 }
 
 function showSummary(text) {
+  console.log('[AI Summary] showSummary called');
+  
   let panel = document.getElementById('ai-summary-panel');
+  console.log('[AI Summary] Panel exists:', !!panel);
   
   if (!panel) {
+    console.log('[AI Summary] Creating new panel');
     panel = document.createElement('div');
     panel.id = 'ai-summary-panel';
     panel.innerHTML = `
@@ -196,6 +200,9 @@ function showSummary(text) {
   panel.querySelector('#ai-summary-content').classList.remove('collapsed');
   
   updateCollapseIcon(panel);
+  console.log('[AI Summary] Panel should now be visible');
+  console.log('[AI Summary] Panel display:', window.getComputedStyle(panel).display);
+  console.log('[AI Summary] Panel parent:', panel.parentNode);
 }
 
 function loadSummaryPreferences(panel) {
@@ -305,27 +312,65 @@ function showSummaryToast(message) {
 
 function injectSummaryPanel() {
   const panel = document.getElementById('ai-summary-panel');
-  if (!panel || panel.parentNode) return;
+  console.log('[AI Summary] injectSummaryPanel called');
+  console.log('[AI Summary] Panel element:', panel);
+  console.log('[AI Summary] Panel parent:', panel?.parentNode);
+  
+  if (!panel || panel.parentNode) {
+    console.log('[AI Summary] Panel already has parent or not found');
+    return;
+  }
   
   const selectors = [
     '#comments',
     'ytd-comments',
     '#comment-section-renderer',
     '.ytd-watch-flexy #comments',
+    '#columns #comments',
+    '#primary + #secondary #comments',
+    '.ytd-two-column-bolt #comments',
   ];
   
   let targetElement = null;
   for (const selector of selectors) {
     targetElement = document.querySelector(selector);
+    console.log(`[AI Summary] Trying selector "${selector}":`, targetElement);
     if (targetElement) break;
   }
   
   if (targetElement) {
+    console.log('[AI Summary] Found target, injecting panel');
     const parent = targetElement.parentNode;
     if (parent) {
       parent.insertBefore(panel, targetElement);
+      console.log('[AI Summary] Panel injected successfully');
+      return;
     }
   }
+  
+  // Fallback: try to find any reasonable place
+  console.log('[AI Summary] No target found, trying fallback locations');
+  
+  const fallbacks = [
+    '#columns',
+    '#primary',
+    '#secondary',
+    '.ytd-watch-flexy',
+    'body',
+  ];
+  
+  for (const selector of fallbacks) {
+    const el = document.querySelector(selector);
+    if (el) {
+      console.log(`[AI Summary] Using fallback: ${selector}`);
+      el.appendChild(panel);
+      return;
+    }
+  }
+  
+  // Last resort: append to body
+  console.log('[AI Summary] Appending to body');
+  document.body.appendChild(panel);
 }
 
 function makeDraggable(el) {
