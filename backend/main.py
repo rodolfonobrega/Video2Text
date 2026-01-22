@@ -5,6 +5,7 @@ import time
 import uuid
 import json
 import asyncio
+import tempfile
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -13,6 +14,13 @@ from pydantic import BaseModel, field_validator
 import yt_dlp
 from providers import ProviderFactory
 from config.models import PROVIDER_MODELS, get_provider_models, get_all_providers
+
+
+def get_temp_audio_path(suffix: str = "") -> str:
+    """Generate a temp file path in the system temp directory."""
+    temp_dir = tempfile.gettempdir()
+    filename = f"yt_subtitles_{uuid.uuid4().hex[:8]}{suffix}"
+    return os.path.join(temp_dir, filename)
 
 app = FastAPI()
 
@@ -287,8 +295,9 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                     await queue.put(None)
                     return
 
-                audio_path = f"temp_audio_{uuid.uuid4().hex[:8]}"
+                audio_path = get_temp_audio_path()
                 audio_path_ref[0] = audio_path
+                print(f"[DEBUG] Using temp file: {audio_path}")
                 start_download = time.time()
                 await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 10, "details": "Downloading audio (yt-dlp)..."}) + "\n")
  
@@ -302,7 +311,7 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                     file_size = os.path.getsize(audio_path)
                     if file_size > MAX_AUDIO_SIZE_BYTES:
                         await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 100, "details": "Compressing audio..."}) + "\n")
-                        compressed_path = f"temp_audio_{uuid.uuid4().hex[:8]}.mp3"
+                        compressed_path = get_temp_audio_path('.mp3')
                         await loop.run_in_executor(None, compress_audio, audio_path, compressed_path)
                         os.remove(audio_path)
                         audio_path = compressed_path
@@ -442,7 +451,7 @@ async def summarize_video(request: SummarizeRequest):
                     await queue.put(None)
                     return
 
-                audio_path = f"temp_audio_{uuid.uuid4().hex[:8]}"
+                audio_path = get_temp_audio_path()
 
                 print(f"Starting summarization request for: {request.video_url}")
                 await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 10, "details": "Downloading video audio..."}) + "\n")
@@ -456,7 +465,7 @@ async def summarize_video(request: SummarizeRequest):
                     file_size = os.path.getsize(audio_path)
                     if file_size > MAX_AUDIO_SIZE_BYTES:
                         await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 100, "details": "Compressing audio..."}) + "\n")
-                        compressed_path = f"temp_audio_{uuid.uuid4().hex[:8]}.mp3"
+                        compressed_path = get_temp_audio_path('.mp3')
                         await loop.run_in_executor(None, compress_audio, audio_path, compressed_path)
                         os.remove(audio_path)
                         audio_path = compressed_path
@@ -509,8 +518,12 @@ async def summarize_video(request: SummarizeRequest):
                 if 'audio_path' in locals() and audio_path and os.path.exists(audio_path):
                     try:
                         os.remove(audio_path)
-                    except:
-                        pass
+                        print(f"[DEBUG] Cleaned up temp file: {audio_path}")
+                    except Exception as e:
+                        print(f"[WARN] Failed to clean up temp file {audio_path}: {e}")
+                else:
+                    if 'audio_path' in locals() and audio_path:
+                        print(f"[DEBUG] Temp file already deleted or not found: {audio_path}")
                 await queue.put(None)
 
         asyncio.create_task(producer())
