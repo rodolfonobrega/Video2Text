@@ -176,7 +176,6 @@ function showSummary(text) {
       </div>
       <div id="ai-summary-content"></div>
     `;
-    document.body.appendChild(panel);
     
     setupSummaryPanelEvents(panel);
     loadSummaryPreferences(panel);
@@ -316,10 +315,31 @@ function injectSummaryPanel() {
   console.log('[AI Summary] Panel element:', panel);
   console.log('[AI Summary] Panel parent:', panel?.parentNode);
   
-  if (!panel || panel.parentNode) {
-    console.log('[AI Summary] Panel already has parent or not found');
+  if (!panel) {
+    console.log('[AI Summary] Panel not found');
     return;
   }
+  
+  // Check if panel is already in the correct location (above comments)
+  const commentsSelectors = [
+    '#comments',
+    'ytd-comments',
+    '#comment-section-renderer',
+  ];
+  
+  let commentsElement = null;
+  for (const selector of commentsSelectors) {
+    commentsElement = document.querySelector(selector);
+    if (commentsElement) break;
+  }
+  
+  if (commentsElement && panel.compareDocumentPosition(commentsElement) & Node.DOCUMENT_POSITION_PRECEDING) {
+    console.log('[AI Summary] Panel is already correctly positioned above comments');
+    return;
+  }
+  
+  // Panel is not in the right place, inject it
+  console.log('[AI Summary] Panel needs to be injected');
   
   const selectors = [
     '#comments',
@@ -342,6 +362,10 @@ function injectSummaryPanel() {
     console.log('[AI Summary] Found target, injecting panel');
     const parent = targetElement.parentNode;
     if (parent) {
+      // Remove from current location if any
+      if (panel.parentNode) {
+        panel.parentNode.removeChild(panel);
+      }
       parent.insertBefore(panel, targetElement);
       console.log('[AI Summary] Panel injected successfully');
       return;
@@ -363,6 +387,9 @@ function injectSummaryPanel() {
     const el = document.querySelector(selector);
     if (el) {
       console.log(`[AI Summary] Using fallback: ${selector}`);
+      if (panel.parentNode) {
+        panel.parentNode.removeChild(panel);
+      }
       el.appendChild(panel);
       return;
     }
@@ -370,6 +397,9 @@ function injectSummaryPanel() {
   
   // Last resort: append to body
   console.log('[AI Summary] Appending to body');
+  if (panel.parentNode) {
+    panel.parentNode.removeChild(panel);
+  }
   document.body.appendChild(panel);
 }
 
