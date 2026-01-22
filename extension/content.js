@@ -142,43 +142,190 @@ function hideProgress() {
 }
 
 function showSummary(text) {
-  let summaryOverlay = document.getElementById('ai-summary-overlay');
-  if (!summaryOverlay) {
-    summaryOverlay = document.createElement('div');
-    summaryOverlay.id = 'ai-summary-overlay';
-    summaryOverlay.innerHTML = `
-      <div id="ai-summary-header">
-        <span>Video Summary</span>
-        <button id="ai-summary-close">×</button>
+  let panel = document.getElementById('ai-summary-panel');
+  
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'ai-summary-panel';
+    panel.innerHTML = `
+      <div id="ai-summary-panel-header">
+        <div class="ai-summary-title">
+          <svg viewBox="0 0 24 24">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M16,11V18.1L13.9,16L11,18.9L8.1,16L11,13.1L8.9,11H16Z"/>
+          </svg>
+          <span>Video Summary</span>
+        </div>
+        <div class="ai-summary-actions">
+          <button class="ai-summary-btn" data-action="copy" title="Copy to clipboard">
+            <svg viewBox="0 0 24 24">
+              <path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/>
+            </svg>
+          </button>
+          <button class="ai-summary-btn" data-action="font-decrease" title="Decrease font size">A-</button>
+          <button class="ai-summary-btn" data-action="font-increase" title="Increase font size">A+</button>
+          <button class="ai-summary-btn" data-action="collapse" title="Collapse">
+            <svg viewBox="0 0 24 24">
+              <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <div id="ai-summary-body"></div>
+      <div id="ai-summary-content"></div>
     `;
-    document.body.appendChild(summaryOverlay);
-    document.getElementById('ai-summary-close').addEventListener('click', () => {
-      summaryOverlay.style.display = 'none';
-    });
-
-    // Tornar arrastável
-    makeDraggable(summaryOverlay);
+    document.body.appendChild(panel);
+    
+    setupSummaryPanelEvents(panel);
+    loadSummaryPreferences(panel);
   }
-
-  const body = summaryOverlay.querySelector('#ai-summary-body');
-
-  // Usar marked para renderizar markdown
+  
+  const content = panel.querySelector('#ai-summary-content');
+  
   if (typeof marked !== 'undefined') {
-    body.innerHTML = marked.parse(text);
+    content.innerHTML = marked.parse(text);
   } else {
-    // Fallback simples
-    let html = text
+    content.innerHTML = text
       .replace(/\n\n/g, '<br><br>')
       .replace(/\n/g, '<br>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/^- (.*)/gm, '• $1');
-    body.innerHTML = html;
   }
+  
+  injectSummaryPanel();
+  panel.classList.add('visible');
+  panel.querySelector('#ai-summary-content').classList.remove('collapsed');
+  
+  updateCollapseIcon(panel);
+}
 
-  summaryOverlay.style.display = 'block';
+function loadSummaryPreferences(panel) {
+  if (!chrome.storage || !chrome.storage.local) return;
+  
+  chrome.storage.local.get(['summary_font_size', 'summary_collapsed'], (result) => {
+    const content = panel.querySelector('#ai-summary-content');
+    
+    if (result.summary_font_size) {
+      content.style.fontSize = result.summary_font_size + 'px';
+    }
+    
+    if (result.summary_collapsed) {
+      content.classList.add('collapsed');
+      updateCollapseIcon(panel);
+    }
+  });
+}
+
+function setupSummaryPanelEvents(panel) {
+  const header = panel.querySelector('#ai-summary-panel-header');
+  const actions = panel.querySelector('.ai-summary-actions');
+  
+  header.addEventListener('click', (e) => {
+    if (actions.contains(e.target)) return;
+  });
+  
+  actions.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.ai-summary-btn');
+    if (!btn) return;
+    
+    const action = btn.dataset.action;
+    const content = panel.querySelector('#ai-summary-content');
+    
+    switch (action) {
+    case 'copy': {
+      const textToCopy = content.innerText;
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        showSummaryToast('Copied to clipboard!');
+      } catch (err) {
+        showSummaryToast('Failed to copy');
+      }
+      break;
+    }
+      
+    case 'font-decrease':
+      adjustSummaryFont(content, -1);
+      break;
+      
+    case 'font-increase':
+      adjustSummaryFont(content, 1);
+      break;
+      
+    case 'collapse':
+      toggleSummaryCollapse(panel, content);
+      break;
+    }
+  });
+}
+
+function adjustSummaryFont(content, delta) {
+  let currentSize = parseFloat(getComputedStyle(content).fontSize);
+  const newSize = Math.max(12, Math.min(20, currentSize + delta));
+  content.style.fontSize = newSize + 'px';
+  
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ summary_font_size: newSize });
+  }
+}
+
+function toggleSummaryCollapse(panel, content) {
+  content.classList.toggle('collapsed');
+  updateCollapseIcon(panel);
+  
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ summary_collapsed: content.classList.contains('collapsed') });
+  }
+}
+
+function updateCollapseIcon(panel) {
+  const btn = panel.querySelector('[data-action="collapse"] svg');
+  const isCollapsed = panel.querySelector('#ai-summary-content').classList.contains('collapsed');
+  
+  if (isCollapsed) {
+    btn.innerHTML = '<path d="M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"/>';
+  } else {
+    btn.innerHTML = '<path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>';
+  }
+}
+
+function showSummaryToast(message) {
+  let toast = document.getElementById('ai-summary-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'ai-summary-toast';
+    document.body.appendChild(toast);
+  }
+  
+  toast.textContent = message;
+  toast.classList.add('show');
+  
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 2000);
+}
+
+function injectSummaryPanel() {
+  const panel = document.getElementById('ai-summary-panel');
+  if (!panel || panel.parentNode) return;
+  
+  const selectors = [
+    '#comments',
+    'ytd-comments',
+    '#comment-section-renderer',
+    '.ytd-watch-flexy #comments',
+  ];
+  
+  let targetElement = null;
+  for (const selector of selectors) {
+    targetElement = document.querySelector(selector);
+    if (targetElement) break;
+  }
+  
+  if (targetElement) {
+    const parent = targetElement.parentNode;
+    if (parent) {
+      parent.insertBefore(panel, targetElement);
+    }
+  }
 }
 
 function makeDraggable(el) {
