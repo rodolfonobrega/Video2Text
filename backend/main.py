@@ -364,8 +364,12 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                 if audio_path_ref[0] and os.path.exists(audio_path_ref[0]):
                     try:
                         os.remove(audio_path_ref[0])
-                    except:
-                        pass
+                        print(f"[DEBUG] Cleaned up temp file: {audio_path_ref[0]}")
+                    except Exception as e:
+                        print(f"[WARN] Failed to clean up temp file {audio_path_ref[0]}: {e}")
+                else:
+                    if audio_path_ref[0]:
+                        print(f"[DEBUG] Temp file already deleted or not found: {audio_path_ref[0]}")
                 await queue.put(None)
 
         asyncio.create_task(producer())
