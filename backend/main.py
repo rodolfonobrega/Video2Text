@@ -436,9 +436,9 @@ async def summarize_video(request: SummarizeRequest):
                 if cached:
                     await queue.put(json.dumps({"action": "progress", "stage": "cached", "progress": 100, "details": "Using cached transcription"}) + "\n")
                     
-                    full_text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\n', '', cached["vtt"])
-                    full_text = re.sub(r'WEBVTT\n\n', '', full_text).strip()
-                    
+                    # Extract text with timestamps for summary context
+                    full_text = re.sub(r'WEBVTT\n\n', '', cached["vtt"]).strip()
+
                     print(f"Generating summary in {request.summary_language}...")
                     await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 50, "details": f"Generating summary in {request.summary_language}..."}) + "\n")
                     
@@ -510,9 +510,9 @@ async def summarize_video(request: SummarizeRequest):
                 
                 await queue.put(json.dumps({"action": "progress", "stage": "transcribing", "progress": 70, "details": "Transcription complete"}) + "\n")
 
-                full_text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\n', '', vtt_content)
-                full_text = re.sub(r'WEBVTT\n\n', '', full_text).strip()
-
+                # Extract text with timestamps for summary context
+                full_text = re.sub(r'WEBVTT\n\n', '', vtt_content).strip()
+                
                 await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 75, "details": "Generating summary..."}) + "\n")
 
                 summary = await provider.summarize(
