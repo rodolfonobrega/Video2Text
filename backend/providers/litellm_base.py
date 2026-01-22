@@ -362,9 +362,25 @@ class LiteLLMProvider(TranscriptionProvider):
             
             # Parse the JSON response
             content = response.choices[0].message.content
+            print(f"[DEBUG] Raw summary response: {content[:200]}...")
+            
             try:
                 import json as json_module
-                data = json_module.loads(content)
+                
+                # Clean up the response - remove markdown code blocks if present
+                cleaned_content = content.strip()
+                if cleaned_content.startswith('```'):
+                    # Remove markdown code block markers
+                    lines = cleaned_content.split('\n')
+                    if lines[0].startswith('```'):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == '```':
+                        lines = lines[:-1]
+                    cleaned_content = '\n'.join(lines)
+                
+                cleaned_content = cleaned_content.strip()
+                
+                data = json_module.loads(cleaned_content)
                 summary = data.get('summary', content)
                 key_moments = data.get('key_moments', [])
                 print(f"[DEBUG] Summary generated with {len(key_moments)} key moments")
@@ -372,8 +388,10 @@ class LiteLLMProvider(TranscriptionProvider):
                     'summary': summary,
                     'key_moments': key_moments
                 }
-            except json_module.JSONDecodeError:
-                print(f"[WARN] Failed to parse summary as JSON, returning raw content")
+            except json_module.JSONDecodeError as err:
+                print(f"[WARN] Failed to parse summary as JSON: {err}")
+                print(f"[WARN] Raw content: {content[:200]}")
+                # Try to extract a basic summary from the text
                 return {
                     'summary': content,
                     'key_moments': []
