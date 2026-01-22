@@ -1,0 +1,2 @@
+JSON array to translate:
+{json_texts}

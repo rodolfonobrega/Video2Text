@@ -4,6 +4,7 @@ Todos os providers que usam LiteLLM podem herdar desta classe.
 """
 import json
 import asyncio
+import os
 from typing import List, Optional
 import litellm
 from .base import TranscriptionProvider, TranscriptionSegment
@@ -11,6 +12,74 @@ from .vtt_utils import parse_vtt_segments, build_vtt_from_segments
 
 
 BATCH_SIZE = 150
+
+# Cache for loaded prompts
+_prompt_cache = {}
+
+
+def load_prompt(prompt_type: str, lang: str = "en") -> str:
+    """
+    Load a prompt from file. Falls back to defaults if file not found.
+    
+    Args:
+        prompt_type: Type of prompt (translation_system, translation_user, summary_system, summary_user)
+        lang: Language code (not currently used but available for future language-specific prompts)
+    
+    Returns:
+        The prompt text with placeholders
+    """
+    cache_key = f"{prompt_type}_{lang}"
+    if cache_key in _prompt_cache:
+        return _prompt_cache[cache_key]
+    
+    # Look for language-specific prompts first, then fallback to default
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), '..', 'prompts', f'{prompt_type}_{lang}.txt'),
+        os.path.join(os.path.dirname(__file__), '..', 'prompts', f'{prompt_type}.txt'),
+    ]
+    
+    prompt_text = None
+    for path in possible_paths:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            with open(abs_path, 'r', encoding='utf-8') as f:
+                prompt_text = f.read()
+            break
+    
+    # Fallback to hardcoded prompts if file not found
+    if prompt_text is None:
+        fallbacks = {
+            'translation_system': 'You are a professional translator. Translate the following subtitles to {target_language}. Return ONLY a JSON object with a translations key containing an array of translated strings in the exact same order and quantity. Do not add any explanation or markdown.',
+            'translation_user': 'JSON array to translate:\n{json_texts}',
+            'summary_system': '''You are a professional content summarizer.
+
+You MUST respond EXCLUSIVELY in {target_language}.
+All output — including titles, bullet points, and conclusions — must be written in {target_language}.
+Do NOT use any other language besides {target_language}.
+
+The input text is a transcription of a video.
+Your task is to summarize the video by:
+- Explaining what the video is about
+- Highlighting the main topics discussed
+- Extracting the key points and insights
+
+Structure the summary using Markdown with:
+- Section headers (##)
+- Bullet points (-)
+
+The summary must be clear, concise, and faithful to the original content.
+End with a brief conclusion that synthesizes the main message of the video.''',
+            'summary_user': 'Summarize this video transcript in {target_language}:\n\n{transcript}',
+        }
+        prompt_text = fallbacks.get(prompt_type, '')
+    
+    _prompt_cache[cache_key] = prompt_text
+    return prompt_text
+
+
+def format_prompt(prompt_template: str, **kwargs) -> str:
+    """Format a prompt template with the given parameters."""
+    return prompt_template.format(**kwargs)
 
 
 class LiteLLMProvider(TranscriptionProvider):
@@ -169,17 +238,24 @@ class LiteLLMProvider(TranscriptionProvider):
                 print(f"[DEBUG] Iniciando lote {batch_idx+1}/{len(batches)} ({len(texts)} textos)")
                 params = self.get_translation_params(model, api_key, base_url)
                 
+                # Load prompts from files
+                system_prompt = load_prompt('translation_system')
+                system_prompt = format_prompt(system_prompt, target_language=target_language)
+                
+                user_prompt = load_prompt('translation_user')
+                user_prompt = format_prompt(user_prompt, json_texts=json.dumps(texts, ensure_ascii=False))
+                
                 try:
                     response = await litellm.acompletion(
                         model=model,
                         messages=[
                             {
                                 "role": "system",
-                                "content": f"You are a professional translator. Translate the following subtitles to {target_language}. Return ONLY a JSON object with a 'translations' key containing an array of translated strings in the exact same order and quantity. Do not add any explanation or markdown."
+                                "content": system_prompt
                             },
                             {
                                 "role": "user",
-                                "content": f"JSON array to translate:\n{json.dumps(texts, ensure_ascii=False)}"
+                                "content": user_prompt
                             }
                         ],
                         **params
@@ -253,36 +329,24 @@ class LiteLLMProvider(TranscriptionProvider):
         else:
             lang_name = lang_names.get(target_language, target_language)
         
+        # Load prompts from files
+        system_prompt = load_prompt('summary_system')
+        system_prompt = format_prompt(system_prompt, target_language=lang_name)
+        
+        user_prompt = load_prompt('summary_user')
+        user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:10000])
+        
         try:
             response = await litellm.acompletion(
                 model=f"{provider_prefix}/{model}",
                 messages=[
                     {
                         "role": "system",
-                        "content": f"""
-                                    You are a professional content summarizer.
-
-                                    You MUST respond EXCLUSIVELY in {lang_name}.
-                                    All output — including titles, bullet points, and conclusions — must be written in {lang_name}.
-                                    Do NOT use any other language besides {lang_name}.
-
-                                    The input text is a transcription of a video.
-                                    Your task is to summarize the video by:
-                                    - Explaining what the video is about
-                                    - Highlighting the main topics discussed
-                                    - Extracting the key points and insights
-
-                                    Structure the summary using Markdown with:
-                                    - Section headers (##)
-                                    - Bullet points (-)
-
-                                    The summary must be clear, concise, and faithful to the original content.
-                                    End with a brief conclusion that synthesizes the main message of the video.
-                                    """
+                        "content": system_prompt
                     },
                     {
                         "role": "user",
-                        "content": f"Summarize this video transcript in {lang_name}:\n\n{transcript[:10000]}"
+                        "content": user_prompt
                     }
                 ],
                 api_key=api_key,
