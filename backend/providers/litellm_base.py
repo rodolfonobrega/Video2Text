@@ -140,8 +140,8 @@ class LiteLLMProvider(TranscriptionProvider):
             "timeout": self.get_timeout(),
         }
         
-        # Usar structured output se habilitado
-        if self.use_structured_output():
+        # Usar structured output se habilitado para este modelo específico
+        if self.use_structured_output(model):
             params["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
