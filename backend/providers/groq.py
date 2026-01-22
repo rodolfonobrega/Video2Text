@@ -43,28 +43,20 @@ class GroqProvider(LiteLLMProvider):
         }
     
     def get_translation_params(self, model: str, api_key: str, base_url: str) -> dict:
-        """Adiciona parâmetros específicos do Groq para tradução."""
+        """
+        Adiciona parâmetros específicos do Groq para tradução.
+        Usa json_object (best-effort) para todos os modelos por ser mais rápido.
+        """
         params = {
             "api_key": api_key,
             "temperature": 0.1,
             "timeout": self.get_timeout(),
+            "reasoning_effort": None,  # Disable reasoning for all models
         }
         
-        # Verificar se o modelo suporta structured output (strict mode)
-        if self.use_structured_output(model):
-            # Strict mode: apenas para modelos que suportam (GPT-OSS)
-            params["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "batch_translation",
-                    "strict": True,
-                    "schema": self.get_translation_schema()
-                }
-            }
-            print(f"[DEBUG] Using structured output (strict) for model: {model}")
-        else:
-            # Best-effort mode: para todos os outros modelos
-            params["response_format"] = {"type": "json_object"}
-            print(f"[DEBUG] Using best-effort JSON for model: {model}")
+        # Usar json_object (best-effort) para todos os modelos
+        # É mais rápido que strict: true e suficiente para tradução em batch
+        params["response_format"] = {"type": "json_object"}
+        print(f"[DEBUG] Using best-effort JSON for model: {model}")
         
         return params
