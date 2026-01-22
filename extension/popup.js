@@ -307,6 +307,33 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('subtitlePosition')?.addEventListener('input', updateRangeLabels);
   document.getElementById('subtitleSize')?.addEventListener('input', updateRangeLabels);
 
+  // Check backend availability when popup opens
+  checkBackendStatus();
+
+  function checkBackendStatus() {
+    const statusEl = document.getElementById('backend-status');
+    const statusText = statusEl?.querySelector('.status-text');
+    
+    if (!statusEl || !statusText) return;
+
+    statusEl.className = 'checking';
+    statusText.textContent = 'Checking backend...';
+
+    fetch(`${BACKEND_URL}/health`, { signal: AbortSignal.timeout(3000) })
+      .then(response => {
+        if (response.ok) {
+          statusEl.className = 'online';
+          statusText.textContent = 'Backend online';
+        } else {
+          throw new Error('Backend returned error');
+        }
+      })
+      .catch(error => {
+        statusEl.className = 'offline';
+        statusText.textContent = 'Backend offline - start with "make dev"';
+      });
+  }
+
   chrome.storage.local.get(
     ['provider', 'openaiApiKey', 'groqApiKey', 'baseUrl', 'targetLanguage', 'summaryLanguage', 'transcriptionModel', 'translationModel', 'summarizationModel', 'subtitlePosition', 'subtitleSize'],
     (result) => {

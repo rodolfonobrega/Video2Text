@@ -19,25 +19,61 @@
     }
 
     h2 {
-      margin: 0 0 15px 0;
+      margin: 0 0 10px 0;
       font-size: 18px;
       color: #2c3e50;
       border-bottom: 2px solid #3498db;
       padding-bottom: 10px;
     }
 
-    h3 {
-      margin: 15px 0 8px 0;
-      font-size: 13px;
-      color: #7f8c8d;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      border-bottom: 1px solid #e0e0e0;
-      padding-bottom: 5px;
+    #backend-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-bottom: 12px;
     }
 
-    h3:first-of-type {
-      margin-top: 0;
+    #backend-status.checking {
+      background: #f0f0f0;
+      color: #666;
+    }
+
+    #backend-status.online {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    #backend-status.offline {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    #backend-status .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    #backend-status.checking .status-dot {
+      background: #666;
+      animation: pulse 1s infinite;
+    }
+
+    #backend-status.online .status-dot {
+      background: #28a745;
+    }
+
+    #backend-status.offline .status-dot {
+      background: #dc3545;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
     }
 
     .section {
@@ -189,6 +225,10 @@
 
 <body>
   <h2>AI Subtitles</h2>
+  <div id="backend-status" class="checking">
+    <span class="status-dot"></span>
+    <span class="status-text">Checking backend...</span>
+  </div>
 
   <h3>Provider</h3>
   <div class="section">
