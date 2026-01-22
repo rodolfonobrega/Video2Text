@@ -195,13 +195,16 @@ function showSummary(text) {
   }
   
   injectSummaryPanel(panel);
-  panel.classList.add('visible');
-  panel.querySelector('#ai-summary-content').classList.remove('collapsed');
   
-  updateCollapseIcon(panel);
-  console.log('[AI Summary] Panel should now be visible');
-  console.log('[AI Summary] Panel display:', window.getComputedStyle(panel).display);
-  console.log('[AI Summary] Panel parent:', panel.parentNode);
+  requestAnimationFrame(() => {
+    panel.classList.add('visible');
+    panel.querySelector('#ai-summary-content').classList.remove('collapsed');
+    
+    updateCollapseIcon(panel);
+    console.log('[AI Summary] Panel should now be visible');
+    console.log('[AI Summary] Panel display:', window.getComputedStyle(panel).display);
+    console.log('[AI Summary] Panel parent:', panel.parentNode);
+  });
 }
 
 function loadSummaryPreferences(panel) {
@@ -319,7 +322,7 @@ function injectSummaryPanel(panel) {
     return;
   }
   
-  // Check if panel is already in the correct location (above comments)
+  // Find comments section
   const commentsSelectors = [
     '#comments',
     'ytd-comments',
@@ -332,12 +335,15 @@ function injectSummaryPanel(panel) {
     if (commentsElement) break;
   }
   
-  if (commentsElement && panel.compareDocumentPosition(commentsElement) & Node.DOCUMENT_POSITION_PRECEDING) {
-    console.log('[AI Summary] Panel is already correctly positioned above comments');
-    return;
+  // Check if panel is already correctly positioned (has parent AND is before comments)
+  if (panel.parentNode && commentsElement) {
+    if (panel.compareDocumentPosition(commentsElement) & Node.DOCUMENT_POSITION_PRECEDING) {
+      console.log('[AI Summary] Panel is already correctly positioned above comments');
+      return;
+    }
   }
   
-  // Panel is not in the right place, inject it
+  // Panel needs to be injected
   console.log('[AI Summary] Panel needs to be injected');
   
   const selectors = [
