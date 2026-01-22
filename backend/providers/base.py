@@ -46,6 +46,18 @@ class TranscriptionProvider(ABC):
     ) -> Dict[str, Any]:
         pass
 
+    @abstractmethod
+    async def extract_key_moments(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        pass
+
     def supports_timestamps(self, model: str) -> bool:
         return "whisper" in model.lower()
 

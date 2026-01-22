@@ -146,6 +146,7 @@ function showSummary(data) {
   
   const summaryText = typeof data === 'string' ? data : (data.summary || '');
   const keyMoments = data.key_moments || [];
+  console.log('[AI Summary] Data received:', { hasKeyMoments: keyMoments.length > 0, count: keyMoments.length });
 
   let panel = document.getElementById('ai-summary-panel');
   console.log('[AI Summary] Panel exists:', !!panel);
@@ -618,7 +619,10 @@ async function getCachedSummary(videoId, lang) {
 
       if (ageDays < SUMMARY_CACHE_EXPIRY_DAYS) {
         console.log('AI Summary: Using cached summary for', videoId, 'lang:', lang);
-        return data.summary;
+        return {
+          summary: data.summary,
+          key_moments: data.key_moments || []
+        };
       } else {
         console.log('AI Summary: Cache expired for', videoId);
         try {
@@ -638,13 +642,14 @@ async function getCachedSummary(videoId, lang) {
   return null;
 }
 
-async function setCachedSummary(videoId, lang, summary) {
+async function setCachedSummary(videoId, lang, data) {
   if (!chrome.storage || !chrome.storage.local) return;
   try {
     const cacheKey = SUMMARY_CACHE_PREFIX + videoId + '_' + lang;
     await chrome.storage.local.set({
       [cacheKey]: {
-        summary: summary,
+        summary: data.summary,
+        key_moments: data.key_moments || [],
         cachedAt: Date.now(),
       },
     });
@@ -982,11 +987,11 @@ async function generateSummary() {
         hideProgress();
 
         if (response.data.summary) {
-          showSummary(response.data.summary);
+          showSummary(response.data);
 
           // Cache the summary (fire and forget)
           if (videoId && summaryLanguage) {
-            setCachedSummary(videoId, summaryLanguage, response.data.summary).catch(err => {
+            setCachedSummary(videoId, summaryLanguage, response.data).catch(err => {
               console.warn('AI Summary: Failed to cache summary:', err);
             });
           }

@@ -97,7 +97,7 @@ class LiteLLMProvider(TranscriptionProvider):
         """Timeout em segundos para chamadas de API. Pode ser sobrescrito."""
         return 600  # 10 minutos
     
-    def use_structured_output(self) -> bool:
+    def use_structured_output(self, model: str = None) -> bool:
         """Se True, usa structured output (json_schema strict mode). Pode ser sobrescrito."""
         return False
     
@@ -310,12 +310,39 @@ class LiteLLMProvider(TranscriptionProvider):
     ) -> dict:
         """
         Gera um resumo estruturado do transcrito usando LiteLLM.
+        Executa duas requisições em paralelo:
+        1. Resumo do conteúdo (sem timestamps)
+        2. Extração de momentos-chave (com timestamps)
         Returns dict with 'summary' and 'key_moments' fields.
         """
         print(f"[DEBUG] Summarize called with target_language: {target_language}, model: {model}")
+
+        summary_task = self._generate_summary(transcript, target_language, model, api_key, base_url)
+        key_moments_task = self._extract_key_moments(transcript, target_language, model, api_key, base_url)
+
+        summary_result, key_moments_result = await asyncio.gather(summary_task, key_moments_task)
+
+        summary_text = summary_result.get('summary', '')
+        key_moments = key_moments_result.get('key_moments', [])
+
+        print(f"[DEBUG] Summary generated, key moments: {len(key_moments)}")
+
+        return {
+            'summary': summary_text,
+            'key_moments': key_moments
+        }
+
+    async def _generate_summary(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+    ) -> dict:
+        """Gera o resumo do conteúdo (sem timestamps)."""
         provider_prefix = self.get_name()
-        
-        # Map language codes to full names for better prompt
+
         lang_names = {
             'en': 'English',
             'pt': 'Portuguese (Brasil)',
@@ -327,6 +354,117 @@ class LiteLLMProvider(TranscriptionProvider):
             'ko': 'Korean',
             'zh': 'Chinese',
         }
+
+        if target_language == 'original':
+            lang_name = "the original language of this text"
+        else:
+            lang_name = lang_names.get(target_language, target_language)
+
+        system_prompt = load_prompt('summary_system')
+        system_prompt = format_prompt(system_prompt, target_language=lang_name)
+
+        user_prompt = load_prompt('summary_user')
+        user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:15000])
+
+        try:
+            response = await litellm.acompletion(
+                model=f"{provider_prefix}/{model}",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                api_key=api_key,
+                timeout=self.get_timeout(),
+                reasoning_effort=None,
+            )
+
+            content = response.choices[0].message.content
+            print(f"[DEBUG] Summary response: {content[:100] if content else '(empty)'}...")
+
+            if not content:
+                return {'summary': 'No summary generated'}
+
+            return {'summary': content}
+
+        except Exception as e:
+            print(f"[ERROR] Summary generation failed: {e}")
+            return {'summary': f'Error: {e}'}
+
+    async def _extract_key_moments(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+    ) -> dict:
+        """Extrai momentos-chave usando structured output."""
+        provider_prefix = self.get_name()
+
+        lang_names = {
+            'en': 'English',
+            'pt': 'Portuguese (Brasil)',
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'it': 'Italian',
+            'ja': 'Japanese',
+            'ko': 'Korean',
+            'zh': 'Chinese',
+        }
+
+        if target_language == 'original':
+            lang_name = "the original language of this text"
+        else:
+            lang_name = lang_names.get(target_language, target_language)
+
+        system_prompt = load_prompt('key_moments_system')
+        system_prompt = format_prompt(system_prompt, target_language=lang_name)
+
+        user_prompt = f"Extract key moments from this transcript with timestamps:\n\n{transcript[:20000]}"
+
+        try:
+            response = await litellm.acompletion(
+                model=f"{provider_prefix}/{model}",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                api_key=api_key,
+                timeout=self.get_timeout(),
+                reasoning_effort=None,
+                response_format={"type": "json_object"},
+            )
+
+            content = response.choices[0].message.content
+            print(f"[DEBUG] Key moments response: {content[:100] if content else '(empty)'}...")
+
+            if not content:
+                return {'key_moments': []}
+
+            data = json.loads(content)
+            key_moments = data.get('key_moments', [])
+            return {'key_moments': key_moments}
+
+        except json.JSONDecodeError as err:
+            print(f"[WARN] Failed to parse key moments as JSON: {err}")
+            print(f"[WARN] Raw content: {content[:200] if content else '(empty)'}")
+            return {'key_moments': []}
+        except Exception as e:
+            print(f"[ERROR] Key moments extraction failed: {e}")
+            return {'key_moments': []}
+
+    async def extract_key_moments(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+        **kwargs,
+    ) -> dict:
+        """Extrai momentos-chave do transcrito usando LiteLLM com structured output."""
+        return await self._extract_key_moments(transcript, target_language, model, api_key, base_url)
         
         # Use original language detection by AI if requested
         if target_language == 'original':
@@ -341,24 +479,26 @@ class LiteLLMProvider(TranscriptionProvider):
         user_prompt = load_prompt('summary_user')
         user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:15000])
         
+        # Determine if model supports structured output
+        use_structured = self.use_structured_output(model)
+        
         try:
-            response = await litellm.acompletion(
-                model=f"{provider_prefix}/{model}",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
+            request_params = {
+                "model": f"{provider_prefix}/{model}",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                api_key=api_key,
-                timeout=self.get_timeout(),
-                reasoning_effort=None,  # Disable reasoning for all models
-                response_format={"type": "json_object"},
-            )
+                "api_key": api_key,
+                "timeout": self.get_timeout(),
+                "reasoning_effort": None,
+            }
+            
+            # Only use structured output if supported
+            if use_structured:
+                request_params["response_format"] = {"type": "json_object"}
+            
+            response = await litellm.acompletion(**request_params)
             
             # Parse the JSON response
             message = response.choices[0].message
@@ -376,7 +516,6 @@ class LiteLLMProvider(TranscriptionProvider):
                 # Clean up the response - remove markdown code blocks if present
                 cleaned_content = content.strip()
                 if cleaned_content.startswith('```'):
-                    # Remove markdown code block markers
                     lines = cleaned_content.split('\n')
                     if lines and lines[0].startswith('```'):
                         lines = lines[1:]
@@ -400,6 +539,7 @@ class LiteLLMProvider(TranscriptionProvider):
                     'summary': content,
                     'key_moments': []
                 }
+        
         except Exception as e:
             print(f"[ERROR] Summarization failed: {e}")
             return {

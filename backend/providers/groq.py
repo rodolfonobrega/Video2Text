@@ -58,5 +58,17 @@ class GroqProvider(LiteLLMProvider):
         # É mais rápido que strict: true e suficiente para tradução em batch
         params["response_format"] = {"type": "json_object"}
         print(f"[DEBUG] Using best-effort JSON for model: {model}")
-        
+
         return params
+
+    async def extract_key_moments(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+        **kwargs,
+    ) -> dict:
+        """Extrai momentos-chave usando Groq."""
+        return await self._extract_key_moments(transcript, target_language, model, api_key, base_url)

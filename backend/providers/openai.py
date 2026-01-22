@@ -10,7 +10,7 @@ class OpenAIProvider(LiteLLMProvider):
     def get_name(self) -> str:
         return "openai"
     
-    def use_structured_output(self) -> bool:
+    def use_structured_output(self, model: str = None) -> bool:
         """OpenAI suporta structured output."""
         return True
     
@@ -35,3 +35,15 @@ class OpenAIProvider(LiteLLMProvider):
         params = super().get_translation_params(model, api_key, base_url)
         params["api_base"] = base_url or "https://api.openai.com/v1"
         return params
+
+    async def extract_key_moments(
+        self,
+        transcript: str,
+        target_language: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+        **kwargs,
+    ) -> dict:
+        """Extrai momentos-chave usando OpenAI."""
+        return await self._extract_key_moments(transcript, target_language, model, api_key, base_url)
