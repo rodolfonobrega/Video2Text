@@ -143,10 +143,10 @@ function hideProgress() {
 
 function showSummary(text) {
   console.log('[AI Summary] showSummary called');
-  
+
   let panel = document.getElementById('ai-summary-panel');
   console.log('[AI Summary] Panel exists:', !!panel);
-  
+
   if (!panel) {
     console.log('[AI Summary] Creating new panel');
     panel = document.createElement('div');
@@ -176,13 +176,13 @@ function showSummary(text) {
       </div>
       <div id="ai-summary-content"></div>
     `;
-    
+
     setupSummaryPanelEvents(panel);
     loadSummaryPreferences(panel);
   }
-  
+
   const content = panel.querySelector('#ai-summary-content');
-  
+
   if (typeof marked !== 'undefined') {
     content.innerHTML = marked.parse(text);
   } else {
@@ -193,13 +193,13 @@ function showSummary(text) {
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/^- (.*)/gm, '• $1');
   }
-  
+
   injectSummaryPanel(panel);
-  
+
   requestAnimationFrame(() => {
     panel.classList.add('visible');
     panel.querySelector('#ai-summary-content').classList.remove('collapsed');
-    
+
     updateCollapseIcon(panel);
     console.log('[AI Summary] Panel should now be visible');
     console.log('[AI Summary] Panel display:', window.getComputedStyle(panel).display);
@@ -209,14 +209,14 @@ function showSummary(text) {
 
 function loadSummaryPreferences(panel) {
   if (!chrome.storage || !chrome.storage.local) return;
-  
+
   chrome.storage.local.get(['summary_font_size', 'summary_collapsed'], (result) => {
     const content = panel.querySelector('#ai-summary-content');
-    
+
     if (result.summary_font_size) {
       content.style.fontSize = result.summary_font_size + 'px';
     }
-    
+
     if (result.summary_collapsed) {
       content.classList.add('collapsed');
       updateCollapseIcon(panel);
@@ -227,41 +227,41 @@ function loadSummaryPreferences(panel) {
 function setupSummaryPanelEvents(panel) {
   const header = panel.querySelector('#ai-summary-panel-header');
   const actions = panel.querySelector('.ai-summary-actions');
-  
+
   header.addEventListener('click', (e) => {
     if (actions.contains(e.target)) return;
   });
-  
+
   actions.addEventListener('click', async (e) => {
     const btn = e.target.closest('.ai-summary-btn');
     if (!btn) return;
-    
+
     const action = btn.dataset.action;
     const content = panel.querySelector('#ai-summary-content');
-    
+
     switch (action) {
-    case 'copy': {
-      const textToCopy = content.innerText;
-      try {
-        await navigator.clipboard.writeText(textToCopy);
-        showSummaryToast('Copied to clipboard!');
-      } catch (err) {
-        showSummaryToast('Failed to copy');
+      case 'copy': {
+        const textToCopy = content.innerText;
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          showSummaryToast('Copied to clipboard!');
+        } catch (err) {
+          showSummaryToast('Failed to copy');
+        }
+        break;
       }
-      break;
-    }
-      
-    case 'font-decrease':
-      adjustSummaryFont(content, -1);
-      break;
-      
-    case 'font-increase':
-      adjustSummaryFont(content, 1);
-      break;
-      
-    case 'collapse':
-      toggleSummaryCollapse(panel, content);
-      break;
+
+      case 'font-decrease':
+        adjustSummaryFont(content, -1);
+        break;
+
+      case 'font-increase':
+        adjustSummaryFont(content, 1);
+        break;
+
+      case 'collapse':
+        toggleSummaryCollapse(panel, content);
+        break;
     }
   });
 }
@@ -270,7 +270,7 @@ function adjustSummaryFont(content, delta) {
   let currentSize = parseFloat(getComputedStyle(content).fontSize);
   const newSize = Math.max(12, Math.min(20, currentSize + delta));
   content.style.fontSize = newSize + 'px';
-  
+
   if (chrome.storage && chrome.storage.local) {
     chrome.storage.local.set({ summary_font_size: newSize });
   }
@@ -279,7 +279,7 @@ function adjustSummaryFont(content, delta) {
 function toggleSummaryCollapse(panel, content) {
   content.classList.toggle('collapsed');
   updateCollapseIcon(panel);
-  
+
   if (chrome.storage && chrome.storage.local) {
     chrome.storage.local.set({ summary_collapsed: content.classList.contains('collapsed') });
   }
@@ -288,7 +288,7 @@ function toggleSummaryCollapse(panel, content) {
 function updateCollapseIcon(panel) {
   const btn = panel.querySelector('[data-action="collapse"] svg');
   const isCollapsed = panel.querySelector('#ai-summary-content').classList.contains('collapsed');
-  
+
   if (isCollapsed) {
     btn.innerHTML = '<path d="M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"/>';
   } else {
@@ -303,10 +303,10 @@ function showSummaryToast(message) {
     toast.id = 'ai-summary-toast';
     document.body.appendChild(toast);
   }
-  
+
   toast.textContent = message;
   toast.classList.add('show');
-  
+
   setTimeout(() => {
     toast.classList.remove('show');
   }, 2000);
@@ -316,36 +316,38 @@ function injectSummaryPanel(panel) {
   console.log('[AI Summary] injectSummaryPanel called');
   console.log('[AI Summary] Panel element:', panel);
   console.log('[AI Summary] Panel parent:', panel?.parentNode);
-  
+  console.log('[AI Summary] Panel isConnected:', panel?.isConnected);
+
   if (!panel) {
     console.log('[AI Summary] Panel not found');
     return;
   }
-  
+
   // Find comments section
   const commentsSelectors = [
     '#comments',
     'ytd-comments',
     '#comment-section-renderer',
   ];
-  
+
   let commentsElement = null;
   for (const selector of commentsSelectors) {
     commentsElement = document.querySelector(selector);
     if (commentsElement) break;
   }
-  
+
   // Check if panel is already correctly positioned (has parent AND is before comments)
-  if (panel.parentNode && commentsElement) {
+  // CRITICAL FIX: Only check this if panel is actually connected to the DOM
+  if (panel.isConnected && panel.parentNode && commentsElement) {
     if (panel.compareDocumentPosition(commentsElement) & Node.DOCUMENT_POSITION_PRECEDING) {
       console.log('[AI Summary] Panel is already correctly positioned above comments');
       return;
     }
   }
-  
+
   // Panel needs to be injected
   console.log('[AI Summary] Panel needs to be injected');
-  
+
   const selectors = [
     '#comments',
     'ytd-comments',
@@ -355,31 +357,33 @@ function injectSummaryPanel(panel) {
     '#primary + #secondary #comments',
     '.ytd-two-column-bolt #comments',
   ];
-  
+
   let targetElement = null;
   for (const selector of selectors) {
     targetElement = document.querySelector(selector);
-    console.log(`[AI Summary] Trying selector "${selector}":`, targetElement);
-    if (targetElement) break;
+    if (targetElement) {
+      console.log(`[AI Summary] Found target via selector "${selector}"`);
+      break;
+    }
   }
-  
+
   if (targetElement) {
     console.log('[AI Summary] Found target, injecting panel');
     const parent = targetElement.parentNode;
     if (parent) {
-      // Remove from current location if any
+      // Remove from current location if any (to be safe)
       if (panel.parentNode) {
         panel.parentNode.removeChild(panel);
       }
       parent.insertBefore(panel, targetElement);
-      console.log('[AI Summary] Panel injected successfully');
+      console.log('[AI Summary] Panel injected successfully before target');
       return;
     }
   }
-  
+
   // Fallback: try to find any reasonable place
   console.log('[AI Summary] No target found, trying fallback locations');
-  
+
   const fallbacks = [
     '#columns',
     '#primary',
@@ -387,7 +391,7 @@ function injectSummaryPanel(panel) {
     '.ytd-watch-flexy',
     'body',
   ];
-  
+
   for (const selector of fallbacks) {
     const el = document.querySelector(selector);
     if (el) {
@@ -395,11 +399,15 @@ function injectSummaryPanel(panel) {
       if (panel.parentNode) {
         panel.parentNode.removeChild(panel);
       }
+      // If appending to #secondary or #columns, maybe prepend?
+      // Usually comments are at bottom, but summary is better at top of the section?
+      // Let's just append for now as per original logic, or prepend if it's #columns?
+      // Original logic was appendChild.
       el.appendChild(panel);
       return;
     }
   }
-  
+
   // Last resort: append to body
   console.log('[AI Summary] Appending to body');
   if (panel.parentNode) {
@@ -900,7 +908,7 @@ async function generateSummary() {
 
         if (response.data.summary) {
           showSummary(response.data.summary);
-          
+
           // Cache the summary (fire and forget)
           if (videoId && summaryLanguage) {
             setCachedSummary(videoId, summaryLanguage, response.data.summary).catch(err => {
