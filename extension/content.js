@@ -260,7 +260,7 @@ function seekToTimestamp(timestamp) {
   const video = document.querySelector('video.html5-main-video');
   if (video) {
     video.currentTime = seconds;
-    video.play().catch(() => { });
+    video.play().catch(() => {});
     showSummaryToast(`Jumped to ${timestamp}`);
   } else {
     // Try alternative selectors
@@ -778,10 +778,10 @@ async function generateSummary() {
     hideProgress();
     showOverlay(
       'Backend not running!\n\n' +
-      'To start it:\n' +
-      '• Docker: make docker-up\n' +
-      '• Local: make dev\n\n' +
-      'Then refresh this page.',
+        'To start it:\n' +
+        '• Docker: make docker-up\n' +
+        '• Local: make dev\n\n' +
+        'Then refresh this page.',
       10000
     );
     if (btn) {
@@ -962,18 +962,18 @@ async function generateSummary() {
     if (err.name === 'TypeError' && errorMessage.includes('fetch')) {
       showOverlay(
         'Backend not running!\n\n' +
-        'To start it:\n' +
-        '• Docker: make docker-up\n' +
-        '• Local: make dev\n\n' +
-        'Then try again.',
+          'To start it:\n' +
+          '• Docker: make docker-up\n' +
+          '• Local: make dev\n\n' +
+          'Then try again.',
         10000
       );
     } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
       showOverlay(
         'Cannot connect to backend.\n\n' +
-        'Make sure the backend is running:\n' +
-        '• Docker: make docker-up\n' +
-        '• Local: make dev',
+          'Make sure the backend is running:\n' +
+          '• Docker: make docker-up\n' +
+          '• Local: make dev',
         8000
       );
     } else {
@@ -1030,10 +1030,10 @@ async function generateSubtitles() {
     hideProgress();
     showOverlay(
       'Backend not running!\n\n' +
-      'To start it:\n' +
-      '• Docker: make docker-up\n' +
-      '• Local: make dev\n\n' +
-      'Then refresh this page.',
+        'To start it:\n' +
+        '• Docker: make docker-up\n' +
+        '• Local: make dev\n\n' +
+        'Then refresh this page.',
       10000
     );
     if (btn) {
@@ -1241,18 +1241,18 @@ async function generateSubtitles() {
     if (err.name === 'TypeError' && errorMessage.includes('fetch')) {
       showOverlay(
         'Backend not running!\n\n' +
-        'To start it:\n' +
-        '• Docker: make docker-up\n' +
-        '• Local: make dev\n\n' +
-        'Then try again.',
+          'To start it:\n' +
+          '• Docker: make docker-up\n' +
+          '• Local: make dev\n\n' +
+          'Then try again.',
         10000
       );
     } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
       showOverlay(
         'Cannot connect to backend.\n\n' +
-        'Make sure the backend is running:\n' +
-        '• Docker: make docker-up\n' +
-        '• Local: make dev',
+          'Make sure the backend is running:\n' +
+          '• Docker: make docker-up\n' +
+          '• Local: make dev',
         8000
       );
     } else {

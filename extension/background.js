@@ -75,7 +75,6 @@ async function handleTranscribe(data, port, endpoint) {
         console.error('Error parsing final stream chunk:', e, buffer);
       }
     }
-
   } catch (error) {
     if (error.name === 'AbortError') {
       port.postMessage({ action: 'error', error: 'Request timed out after 30 minutes' });

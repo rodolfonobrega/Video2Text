@@ -230,8 +230,8 @@ document.addEventListener('DOMContentLoaded', () => {
       translationModels.length > 0
         ? translationModels
         : PROVIDER_DEFAULTS[provider]?.fallback_translation || [
-          { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B' },
-        ];
+            { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B' },
+          ];
 
     summarizationModels.forEach((model) => {
       const option = document.createElement('option');
@@ -508,7 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab) {
-        chrome.tabs.sendMessage(tab.id, { action: 'clear-local-state' }).catch(() => { });
+        chrome.tabs.sendMessage(tab.id, { action: 'clear-local-state' }).catch(() => {});
       }
 
       const status = document.getElementById('status');
