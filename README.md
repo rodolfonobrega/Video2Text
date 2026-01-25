@@ -1,4 +1,4 @@
-# YouTube AI Subtitles
+# WhisperTube
 
 <div align="center">
 
@@ -36,8 +36,8 @@ Generate AI-powered subtitles for YouTube videos using OpenAI's Whisper, GPT mod
 
 ### 1. Clone and Setup
 ```bash
-git clone <repository-url>
-cd youtube_subtitles
+git clone https://github.com/rodolfonobrega/WhisperTube.git
+cd WhisperTube
 ```
 
 ### 2. Start Backend with Docker
@@ -107,8 +107,8 @@ make docker-restart
 make setup
 
 # Or manually:
-conda create -n youtube_extension python=3.12
-conda activate youtube_extension
+conda create -n whispertube python=3.12
+conda activate whispertube
 pip install -r backend/requirements.txt
 npm install
 ```
@@ -185,7 +185,7 @@ Access via extension popup in Chrome toolbar:
 
 ### Project Structure
 ```
-youtube_subtitles/
+WhisperTube/
 ├── backend/
 │   ├── main.py              # FastAPI server
 │   ├── requirements.txt     # Python dependencies
