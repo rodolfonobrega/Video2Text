@@ -2,6 +2,7 @@
 Classe base com lógica compartilhada de tradução usando LiteLLM.
 Todos os providers que usam LiteLLM podem herdar desta classe.
 """
+
 import json
 import asyncio
 import os
@@ -9,7 +10,6 @@ from typing import List, Optional
 import litellm
 from .base import TranscriptionProvider, TranscriptionSegment
 from .vtt_utils import parse_vtt_segments, build_vtt_from_segments
-
 
 BATCH_SIZE = 150
 
@@ -20,38 +20,38 @@ _prompt_cache = {}
 def load_prompt(prompt_type: str, lang: str = "en") -> str:
     """
     Load a prompt from file. Falls back to defaults if file not found.
-    
+
     Args:
         prompt_type: Type of prompt (translation_system, translation_user, summary_system, summary_user)
         lang: Language code (not currently used but available for future language-specific prompts)
-    
+
     Returns:
         The prompt text with placeholders
     """
     cache_key = f"{prompt_type}_{lang}"
     if cache_key in _prompt_cache:
         return _prompt_cache[cache_key]
-    
+
     # Look for language-specific prompts first, then fallback to default
     possible_paths = [
-        os.path.join(os.path.dirname(__file__), '..', 'prompts', f'{prompt_type}_{lang}.txt'),
-        os.path.join(os.path.dirname(__file__), '..', 'prompts', f'{prompt_type}.txt'),
+        os.path.join(os.path.dirname(__file__), "..", "prompts", f"{prompt_type}_{lang}.txt"),
+        os.path.join(os.path.dirname(__file__), "..", "prompts", f"{prompt_type}.txt"),
     ]
-    
+
     prompt_text = None
     for path in possible_paths:
         abs_path = os.path.abspath(path)
         if os.path.exists(abs_path):
-            with open(abs_path, 'r', encoding='utf-8') as f:
+            with open(abs_path, "r", encoding="utf-8") as f:
                 prompt_text = f.read()
             break
-    
+
     # Fallback to hardcoded prompts if file not found
     if prompt_text is None:
         fallbacks = {
-            'translation_system': 'You are a professional translator. Translate the following subtitles to {target_language}. Return ONLY a JSON object with a translations key containing an array of translated strings in the exact same order and quantity. Do not add any explanation or markdown.',
-            'translation_user': 'JSON array to translate:\n{json_texts}',
-            'summary_system': '''You are a professional content summarizer.
+            "translation_system": "You are a professional translator. Translate the following subtitles to {target_language}. Return ONLY a JSON object with a translations key containing an array of translated strings in the exact same order and quantity. Do not add any explanation or markdown.",
+            "translation_user": "JSON array to translate:\n{json_texts}",
+            "summary_system": """You are a professional content summarizer.
 
 You MUST respond EXCLUSIVELY in {target_language}.
 All output — including titles, bullet points, and conclusions — must be written in {target_language}.
@@ -68,11 +68,11 @@ Structure the summary using Markdown with:
 - Bullet points (-)
 
 The summary must be clear, concise, and faithful to the original content.
-End with a brief conclusion that synthesizes the main message of the video.''',
-            'summary_user': 'Summarize this video transcript in {target_language}:\n\n{transcript}',
+End with a brief conclusion that synthesizes the main message of the video.""",
+            "summary_user": "Summarize this video transcript in {target_language}:\n\n{transcript}",
         }
-        prompt_text = fallbacks.get(prompt_type, '')
-    
+        prompt_text = fallbacks.get(prompt_type, "")
+
     _prompt_cache[cache_key] = prompt_text
     return prompt_text
 
@@ -88,19 +88,19 @@ class LiteLLMProvider(TranscriptionProvider):
     Subclasses devem implementar get_name() e podem sobrescrever
     get_transcription_params() e get_translation_params().
     """
-    
+
     def get_concurrency_limit(self) -> int:
         """Limite de concorrência para tradução. Pode ser sobrescrito."""
         return 10
-    
+
     def get_timeout(self) -> int:
         """Timeout em segundos para chamadas de API. Pode ser sobrescrito."""
-        return 600  # 10 minutos
-    
+        return 600  # 10 minutes
+
     def use_structured_output(self, model: str = None) -> bool:
         """Se True, usa structured output (json_schema strict mode). Pode ser sobrescrito."""
         return False
-    
+
     def get_translation_schema(self) -> dict:
         """
         Schema para structured output na tradução.
@@ -108,16 +108,11 @@ class LiteLLMProvider(TranscriptionProvider):
         """
         return {
             "type": "object",
-            "properties": {
-                "translations": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                }
-            },
+            "properties": {"translations": {"type": "array", "items": {"type": "string"}}},
             "required": ["translations"],
-            "additionalProperties": False
+            "additionalProperties": False,
         }
-    
+
     def get_transcription_params(self, model: str, api_key: str, base_url: str) -> dict:
         """
         Retorna parâmetros específicos para transcrição.
@@ -129,7 +124,7 @@ class LiteLLMProvider(TranscriptionProvider):
             "timeout": self.get_timeout(),
             "reasoning_effort": None,  # Disable reasoning for all models
         }
-    
+
     def get_translation_params(self, model: str, api_key: str, base_url: str) -> dict:
         """
         Retorna parâmetros específicos para tradução.
@@ -141,20 +136,20 @@ class LiteLLMProvider(TranscriptionProvider):
             "timeout": self.get_timeout(),
             "reasoning_effort": None,  # Disable reasoning for all models
         }
-        
-        # Usar structured output se habilitado para este modelo específico
+
+        # Use structured output if enabled for this specific model
         if self.use_structured_output(model):
             params["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "batch_translation",
                     "strict": True,
-                    "schema": self.get_translation_schema()
-                }
+                    "schema": self.get_translation_schema(),
+                },
             }
         else:
             params["response_format"] = {"type": "json_object"}
-        
+
         return params
 
     async def transcribe(
@@ -162,21 +157,17 @@ class LiteLLMProvider(TranscriptionProvider):
     ) -> str:
         """Transcreve áudio usando LiteLLM (async)."""
         provider_prefix = self.get_name()
-        
+
         with open(audio_path, "rb") as audio_file:
             params = self.get_transcription_params(model, api_key, base_url)
             response = await litellm.atranscription(
-                model=f"{provider_prefix}/{model}",
-                file=audio_file,
-                **params
+                model=f"{provider_prefix}/{model}", file=audio_file, **params
             )
 
         if hasattr(response, "segments") and response.segments:
             segments = [
                 TranscriptionSegment(
-                    start=seg.get('start', 0),
-                    end=seg.get('end', 0),
-                    text=seg.get('text', '')
+                    start=seg.get("start", 0), end=seg.get("end", 0), text=seg.get("text", "")
                 )
                 for seg in response.segments
             ]
@@ -224,60 +215,76 @@ class LiteLLMProvider(TranscriptionProvider):
     ) -> str:
         """Lógica compartilhada de tradução em lotes."""
         import time
+
         start_total = time.time()
-        
-        batches = [segments[i:i + BATCH_SIZE] for i in range(0, len(segments), BATCH_SIZE)]
+
+        batches = [segments[i : i + BATCH_SIZE] for i in range(0, len(segments), BATCH_SIZE)]
         print(f"[DEBUG] Iniciando tradução de {len(segments)} segmentos em {len(batches)} lotes...")
         translated_all = []
 
+        if progress_callback:
+            await progress_callback("translating", 0, f"Starting translation of {len(batches)} batches")
+
+        completed_batches = 0
+        total_batches = len(batches)
         semaphore = asyncio.Semaphore(self.get_concurrency_limit())
 
-        async def translate_batch(batch_idx: int, batch: List[TranscriptionSegment]) -> List[TranscriptionSegment]:
+        async def translate_batch(
+            batch_idx: int, batch: List[TranscriptionSegment]
+        ) -> List[TranscriptionSegment]:
+            nonlocal completed_batches
             texts = [seg.text for seg in batch]
-            
+
             async with semaphore:
                 batch_start = time.time()
-                print(f"[DEBUG] Iniciando lote {batch_idx+1}/{len(batches)} ({len(texts)} textos)")
+                print(f"[DEBUG] Iniciando lote {batch_idx+1}/{total_batches} ({len(texts)} textos)")
                 params = self.get_translation_params(model, api_key, base_url)
-                
+
                 # Load prompts from files
-                system_prompt = load_prompt('translation_system')
+                system_prompt = load_prompt("translation_system")
                 system_prompt = format_prompt(system_prompt, target_language=target_language)
-                
-                user_prompt = load_prompt('translation_user')
-                user_prompt = format_prompt(user_prompt, json_texts=json.dumps(texts, ensure_ascii=False))
-                
+
+                user_prompt = load_prompt("translation_user")
+                user_prompt = format_prompt(
+                    user_prompt, json_texts=json.dumps(texts, ensure_ascii=False)
+                )
+
                 try:
                     response = await litellm.acompletion(
                         model=model,
                         messages=[
-                            {
-                                "role": "system",
-                                "content": system_prompt
-                            },
-                            {
-                                "role": "user",
-                                "content": user_prompt
-                            }
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
                         ],
-                        **params
+                        **params,
                     )
-                    
+
                     batch_elapsed = time.time() - batch_start
                     print(f"[DEBUG] Lote {batch_idx+1} concluído em {batch_elapsed:.2f}s")
-                    
+
                     content = response.choices[0].message.content
                     parsed = json.loads(content)
                     translated_texts = parsed.get("translations", [])
-                    
-                    # Garantir que temos o mesmo número de traduções
+
+                    # Ensure we have the same number of translations
                     if len(translated_texts) != len(texts):
-                        print(f"[WARN] Lote {batch_idx+1}: recebeu {len(translated_texts)} traduções para {len(texts)} textos.")
-                
+                        print(
+                            f"[WARN] Lote {batch_idx+1}: recebeu {len(translated_texts)} traduções para {len(texts)} textos."
+                        )
+
                 except Exception as e:
                     print(f"[ERROR] Falha no lote {batch_idx+1}: {e}")
                     translated_texts = texts
-                
+
+                completed_batches += 1
+                if progress_callback:
+                    percentage = int((completed_batches / total_batches) * 100)
+                    await progress_callback(
+                        "translating",
+                        percentage,
+                        f"Translated {completed_batches}/{total_batches} batches",
+                    )
+
             for i, seg in enumerate(batch):
                 if i < len(translated_texts):
                     seg.text = translated_texts[i]
@@ -292,11 +299,13 @@ class LiteLLMProvider(TranscriptionProvider):
 
         total_segments = len(segments)
         if progress_callback:
-            await progress_callback("translating", 100, f"Translated {total_segments}/{total_segments} segments")
+            await progress_callback(
+                "translating", 100, f"Translated {total_segments}/{total_segments} segments"
+            )
 
         total_elapsed = time.time() - start_total
         print(f"[DEBUG] Tradução total concluída em {total_elapsed:.2f}s")
-        
+
         return build_vtt_from_segments(translated_all)
 
     async def summarize(
@@ -306,6 +315,7 @@ class LiteLLMProvider(TranscriptionProvider):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
         **kwargs,
     ) -> dict:
         """
@@ -317,20 +327,27 @@ class LiteLLMProvider(TranscriptionProvider):
         """
         print(f"[DEBUG] Summarize called with target_language: {target_language}, model: {model}")
 
-        summary_task = self._generate_summary(transcript, target_language, model, api_key, base_url)
-        key_moments_task = self._extract_key_moments(transcript, target_language, model, api_key, base_url)
+        if progress_callback:
+            await progress_callback("summarizing", 20, "Starting parallel analysis...")
+
+        summary_task = self._generate_summary(
+            transcript, target_language, model, api_key, base_url, progress_callback
+        )
+        key_moments_task = self._extract_key_moments(
+            transcript, target_language, model, api_key, base_url, progress_callback
+        )
 
         summary_result, key_moments_result = await asyncio.gather(summary_task, key_moments_task)
 
-        summary_text = summary_result.get('summary', '')
-        key_moments = key_moments_result.get('key_moments', [])
+        summary_text = summary_result.get("summary", "")
+        key_moments = key_moments_result.get("key_moments", [])
 
         print(f"[DEBUG] Summary generated, key moments: {len(key_moments)}")
 
-        return {
-            'summary': summary_text,
-            'key_moments': key_moments
-        }
+        if progress_callback:
+            await progress_callback("summarizing", 95, "Summary and key moments ready!")
+
+        return {"summary": summary_text, "key_moments": key_moments}
 
     async def _generate_summary(
         self,
@@ -339,56 +356,68 @@ class LiteLLMProvider(TranscriptionProvider):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
     ) -> dict:
         """Gera o resumo do conteúdo (sem timestamps)."""
         provider_prefix = self.get_name()
+        
+        if progress_callback:
+            await progress_callback("summarizing", 30, "Preparing summary prompt...")
 
         lang_names = {
-            'en': 'English',
-            'pt': 'Portuguese (Brasil)',
-            'es': 'Spanish',
-            'fr': 'French',
-            'de': 'German',
-            'it': 'Italian',
-            'ja': 'Japanese',
-            'ko': 'Korean',
-            'zh': 'Chinese',
+            "en": "English",
+            "pt": "Portuguese (Brasil)",
+            "es": "Spanish",
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "zh": "Chinese",
         }
 
-        if target_language == 'original':
+        if target_language == "original":
             lang_name = "the original language of this text"
         else:
             lang_name = lang_names.get(target_language, target_language)
 
-        system_prompt = load_prompt('summary_system')
+        system_prompt = load_prompt("summary_system")
         system_prompt = format_prompt(system_prompt, target_language=lang_name)
 
-        user_prompt = load_prompt('summary_user')
-        user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:15000])
+        user_prompt = load_prompt("summary_user")
+        user_prompt = format_prompt(
+            user_prompt, target_language=lang_name, transcript=transcript[:15000]
+        )
+
+        if progress_callback:
+            await progress_callback("summarizing", 40, "Sending summary request to AI...")
 
         try:
             response = await litellm.acompletion(
                 model=f"{provider_prefix}/{model}",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
                 api_key=api_key,
                 timeout=self.get_timeout(),
                 reasoning_effort=None,
             )
 
+            if progress_callback:
+                await progress_callback("summarizing", 80, "Processing AI response...")
+
             content = response.choices[0].message.content
             print(f"[DEBUG] Summary response: {content[:100] if content else '(empty)'}...")
 
             if not content:
-                return {'summary': 'No summary generated'}
+                return {"summary": "No summary generated"}
 
-            return {'summary': content}
+            return {"summary": content}
 
         except Exception as e:
             print(f"[ERROR] Summary generation failed: {e}")
-            return {'summary': f'Error: {e}'}
+            return {"summary": f"Error: {e}"}
 
     async def _extract_key_moments(
         self,
@@ -397,38 +426,47 @@ class LiteLLMProvider(TranscriptionProvider):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
     ) -> dict:
         """Extrai momentos-chave usando structured output."""
         provider_prefix = self.get_name()
 
+        if progress_callback:
+            await progress_callback("summarizing", 35, "Preparing key moments prompt...")
+
         lang_names = {
-            'en': 'English',
-            'pt': 'Portuguese (Brasil)',
-            'es': 'Spanish',
-            'fr': 'French',
-            'de': 'German',
-            'it': 'Italian',
-            'ja': 'Japanese',
-            'ko': 'Korean',
-            'zh': 'Chinese',
+            "en": "English",
+            "pt": "Portuguese (Brasil)",
+            "es": "Spanish",
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "zh": "Chinese",
         }
 
-        if target_language == 'original':
+        if target_language == "original":
             lang_name = "the original language of this text"
         else:
             lang_name = lang_names.get(target_language, target_language)
 
-        system_prompt = load_prompt('key_moments_system')
+        system_prompt = load_prompt("key_moments_system")
         system_prompt = format_prompt(system_prompt, target_language=lang_name)
 
-        user_prompt = f"Extract key moments from this transcript with timestamps:\n\n{transcript[:20000]}"
+        user_prompt = (
+            f"Extract key moments from this transcript with timestamps:\n\n{transcript[:20000]}"
+        )
+
+        if progress_callback:
+            await progress_callback("summarizing", 45, "Fetching key moments from AI...")
 
         try:
             response = await litellm.acompletion(
                 model=f"{provider_prefix}/{model}",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
                 api_key=api_key,
                 timeout=self.get_timeout(),
@@ -436,23 +474,26 @@ class LiteLLMProvider(TranscriptionProvider):
                 response_format={"type": "json_object"},
             )
 
+            if progress_callback:
+                await progress_callback("summarizing", 85, "Parsing key moments...")
+
             content = response.choices[0].message.content
             print(f"[DEBUG] Key moments response: {content[:100] if content else '(empty)'}...")
 
             if not content:
-                return {'key_moments': []}
+                return {"key_moments": []}
 
             data = json.loads(content)
-            key_moments = data.get('key_moments', [])
-            return {'key_moments': key_moments}
+            key_moments = data.get("key_moments", [])
+            return {"key_moments": key_moments}
 
         except json.JSONDecodeError as err:
             print(f"[WARN] Failed to parse key moments as JSON: {err}")
             print(f"[WARN] Raw content: {content[:200] if content else '(empty)'}")
-            return {'key_moments': []}
+            return {"key_moments": []}
         except Exception as e:
             print(f"[ERROR] Key moments extraction failed: {e}")
-            return {'key_moments': []}
+            return {"key_moments": []}
 
     async def extract_key_moments(
         self,
@@ -461,88 +502,10 @@ class LiteLLMProvider(TranscriptionProvider):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
         **kwargs,
     ) -> dict:
         """Extrai momentos-chave do transcrito usando LiteLLM com structured output."""
-        return await self._extract_key_moments(transcript, target_language, model, api_key, base_url)
-        
-        # Use original language detection by AI if requested
-        if target_language == 'original':
-            lang_name = "the original language of this text"
-        else:
-            lang_name = lang_names.get(target_language, target_language)
-        
-        # Load prompts from files
-        system_prompt = load_prompt('summary_system')
-        system_prompt = format_prompt(system_prompt, target_language=lang_name)
-        
-        user_prompt = load_prompt('summary_user')
-        user_prompt = format_prompt(user_prompt, target_language=lang_name, transcript=transcript[:15000])
-        
-        # Determine if model supports structured output
-        use_structured = self.use_structured_output(model)
-        
-        try:
-            request_params = {
-                "model": f"{provider_prefix}/{model}",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "api_key": api_key,
-                "timeout": self.get_timeout(),
-                "reasoning_effort": None,
-            }
-            
-            # Only use structured output if supported
-            if use_structured:
-                request_params["response_format"] = {"type": "json_object"}
-            
-            response = await litellm.acompletion(**request_params)
-            
-            # Parse the JSON response
-            message = response.choices[0].message
-            content = message.content if message and message.content else ''
-            print(f"[DEBUG] Raw summary response: {content[:200] if content else '(empty)'}...")
-            
-            if not content:
-                print(f"[WARN] Empty response from AI")
-                return {
-                    'summary': 'No summary generated',
-                    'key_moments': []
-                }
-            
-            try:
-                # Clean up the response - remove markdown code blocks if present
-                cleaned_content = content.strip()
-                if cleaned_content.startswith('```'):
-                    lines = cleaned_content.split('\n')
-                    if lines and lines[0].startswith('```'):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip() == '```':
-                        lines = lines[:-1]
-                    cleaned_content = '\n'.join(lines).strip()
-                
-                data = json.loads(cleaned_content)
-                summary = data.get('summary', content)
-                key_moments = data.get('key_moments', [])
-                print(f"[DEBUG] Summary generated with {len(key_moments)} key moments")
-                return {
-                    'summary': summary,
-                    'key_moments': key_moments
-                }
-            except json.JSONDecodeError as err:
-                print(f"[WARN] Failed to parse summary as JSON: {err}")
-                print(f"[WARN] Raw content: {content[:200]}")
-                # Return raw content as summary if parsing fails
-                return {
-                    'summary': content,
-                    'key_moments': []
-                }
-        
-        except Exception as e:
-            print(f"[ERROR] Summarization failed: {e}")
-            return {
-                'summary': f"Error during summarization: {e}",
-                'key_moments': []
-            }
+        return await self._extract_key_moments(
+            transcript, target_language, model, api_key, base_url, progress_callback
+        )

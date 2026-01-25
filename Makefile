@@ -1,4 +1,4 @@
-.PHONY: help install setup dev docker-up docker-down docker-logs docker-restart lint format clean
+.PHONY: help install setup dev docker-up docker-down docker-logs docker-restart lint format clean clean-windows
 
 help:
 	@echo "YouTube AI Subtitles - Available Commands:"
@@ -12,6 +12,7 @@ help:
 	@echo "  make lint         - Run linters"
 	@echo "  make format       - Format code"
 	@echo "  make clean        - Clean temporary files"
+	@echo "  make clean-windows- Clean temporary files (Windows compatible)"
 
 install:
 	@echo "Installing Python dependencies..."
@@ -64,4 +65,10 @@ clean:
 	find . -type f -name "*.pyo" -delete 2>/dev/null || true
 	find . -type f -name ".DS_Store" -delete 2>/dev/null || true
 	find . -type f -name "*.mp3" -delete 2>/dev/null || true
+	@echo "Clean complete"
+
+clean-windows:
+	@echo "Cleaning temporary files (Windows)..."
+	powershell -Command "Get-ChildItem -Path . -Include __pycache__ -Recurse -Directory | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue"
+	powershell -Command "Get-ChildItem -Path . -Include *.pyc, *.pyo, .DS_Store, *.mp3 -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue"
 	@echo "Clean complete"

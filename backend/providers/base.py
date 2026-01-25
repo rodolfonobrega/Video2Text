@@ -42,6 +42,7 @@ class TranscriptionProvider(ABC):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         pass
@@ -54,6 +55,7 @@ class TranscriptionProvider(ABC):
         model: str,
         api_key: str,
         base_url: str,
+        progress_callback: Optional[callable] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         pass

@@ -1,5 +1,7 @@
+/* eslint-disable no-constant-condition */
+
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'transcription-port' && port.name !== 'summary-port') return;
+  if (!port.name.includes('port')) return;
 
   port.onMessage.addListener((msg) => {
     if (msg.action === 'ping') {

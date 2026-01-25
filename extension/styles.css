@@ -147,9 +147,9 @@
   margin-bottom: 5px;
 }
 
-#ai-summary-body br+br {
+#ai-summary-body br + br {
   display: block;
-  content: "";
+  content: '';
   margin-top: 10px;
 }
 
@@ -248,7 +248,9 @@
   color: var(--yt-spec-text-secondary, #606060);
   font-size: 14px;
   font-weight: 500;
-  transition: background-color 0.2s, color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
 }
 
 .ai-summary-btn:hover {

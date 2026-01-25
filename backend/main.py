@@ -22,6 +22,7 @@ def get_temp_audio_path(suffix: str = "") -> str:
     filename = f"yt_subtitles_{uuid.uuid4().hex[:8]}{suffix}"
     return os.path.join(temp_dir, filename)
 
+
 app = FastAPI()
 
 app.add_middleware(
@@ -135,7 +136,6 @@ def cleanup_expired_cache():
     return len(expired)
 
 
-
 def get_cached_subtitle(video_id: str, language: str = "original") -> Optional[Dict[str, Any]]:
     cache_key = f"{video_id}_{language}"
     if cache_key not in subtitle_cache:
@@ -168,36 +168,71 @@ def set_cached_subtitle(video_id: str, vtt: str, language: str = "original"):
 
 
 def download_audio(video_url: str, output_path: str, progress_callback=None):
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
+    max_retries = 3
+    retry_delay = 2
+
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }
+                ],
+                "outtmpl": output_path,
+                "quiet": True,
+                "no_warnings": True,
+                # Add headers to mimic browser request to avoid 403
+                "http_headers": {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-us,en;q=0.5",
+                },
             }
-        ],
-        "outtmpl": output_path,
-        "quiet": True,
-        "no_warnings": True,
-    }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([video_url])
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
 
-    base_path = output_path
-    if os.path.exists(base_path + ".mp3"):
-        return base_path + ".mp3"
-    elif os.path.exists(base_path):
-        return base_path
+            # If download successful, check for file
+            base_path = output_path
+            if os.path.exists(base_path + ".mp3"):
+                return base_path + ".mp3"
+            elif os.path.exists(base_path):
+                return base_path
 
-    directory = os.path.dirname(output_path)
-    filename = os.path.basename(output_path)
-    for f in os.listdir(directory):
-        if f.startswith(filename) and f.endswith(".mp3"):
-            return os.path.join(directory, f)
+            directory = os.path.dirname(output_path)
+            filename = os.path.basename(output_path)
+            for f in os.listdir(directory):
+                if f.startswith(filename) and f.endswith(".mp3"):
+                    return os.path.join(directory, f)
+            
+            # If we get here, file wasn't found even though download supposedly finished
+            raise Exception("Audio file not found after download")
 
-    raise Exception("Audio file not found after download")
+        except yt_dlp.utils.DownloadError as e:
+            last_error = e
+            error_msg = str(e).lower()
+            
+            # Check if it's a 403 error or similar network issue
+            if "403" in error_msg or "forbidden" in error_msg:
+                print(f"[WARN] Download failed with 403 (Attempt {attempt+1}/{max_retries}). Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                # If it's another type of error, re-raise immediately
+                raise e
+        except Exception as e:
+            # Re-raise other unexpected exceptions
+            raise e
+
+    # If we exhausted retries
+    print(f"[ERROR] Failed to download audio after {max_retries} attempts")
+    raise last_error or Exception("Failed to download audio")
 
 
 def compress_audio(input_path: str, output_path: str, max_size_bytes: int = MAX_AUDIO_SIZE_BYTES):
@@ -208,12 +243,16 @@ def compress_audio(input_path: str, output_path: str, max_size_bytes: int = MAX_
     for bitrate in bitrates:
         ffmpeg_cmd = [
             "ffmpeg",
-            "-i", input_path,
-            "-b:a", bitrate,
-            "-ar", "16000",
-            "-ac", "1",
+            "-i",
+            input_path,
+            "-b:a",
+            bitrate,
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
             "-y",
-            output_path
+            output_path,
         ]
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -245,10 +284,10 @@ async def root():
 async def get_models(provider: Optional[str] = None):
     """
     Retorna lista de modelos disponíveis.
-    
+
     Query params:
         provider: Filtrar por provider específico (openai, groq)
-    
+
     Returns:
         Se provider especificado: {transcription_models: [...], translation_models: [...]}
         Se não: {providers: [{id, name, models: {...}}]}
@@ -257,23 +296,25 @@ async def get_models(provider: Optional[str] = None):
         provider_lower = provider.lower()
         if provider_lower not in PROVIDER_MODELS:
             raise HTTPException(status_code=404, detail=f"Provider '{provider}' not found")
-        
+
         return {
             "provider": provider_lower,
             "transcription_models": get_provider_models(provider_lower, "transcription"),
-            "translation_models": get_provider_models(provider_lower, "translation")
+            "translation_models": get_provider_models(provider_lower, "translation"),
         }
-    
-    # Retornar todos os providers e seus modelos
+
+    # Return all providers and their models
     all_providers = []
     for provider_id, provider_data in PROVIDER_MODELS.items():
-        all_providers.append({
-            "id": provider_id,
-            "name": provider_data["name"],
-            "transcription_models": provider_data.get("transcription_models", []),
-            "translation_models": provider_data.get("translation_models", [])
-        })
-    
+        all_providers.append(
+            {
+                "id": provider_id,
+                "name": provider_data["name"],
+                "transcription_models": provider_data.get("transcription_models", []),
+                "translation_models": provider_data.get("translation_models", []),
+            }
+        )
+
     return {"providers": all_providers}
 
 
@@ -285,30 +326,73 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
 
         async def producer():
             try:
+                # Immediate initial progress to signal connection
+                await queue.put(
+                    json.dumps(
+                        {
+                            "action": "progress",
+                            "stage": "initializing",
+                            "progress": 10,
+                            "details": "Connected to backend, analyzing request...",
+                        }
+                    )
+                    + "\n"
+                )
+
                 video_id = get_video_id(request.video_url)
-                
+
                 # Check cache for EXACT target language match
                 if request.check_cache and video_id:
                     cached = get_cached_subtitle(video_id, request.target_language)
                     if cached:
-                        await queue.put(json.dumps({"action": "transcription_result", "success": True, "data": {"vtt": cached["vtt"], "cached": True}}) + "\n")
+                        await queue.put(
+                            json.dumps(
+                                {
+                                    "action": "transcription_result",
+                                    "success": True,
+                                    "data": {"vtt": cached["vtt"], "cached": True},
+                                }
+                            )
+                            + "\n"
+                        )
                         await queue.put(None)
                         return
 
                 provider = ProviderFactory.get_provider(request.provider)
                 if not provider:
-                    await queue.put(json.dumps({"action": "error", "error": f"Provider '{request.provider}' not found."}) + "\n")
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "error",
+                                "error": f"Provider '{request.provider}' not found.",
+                            }
+                        )
+                        + "\n"
+                    )
                     await queue.put(None)
                     return
 
                 # Optimization: Check if we have 'original' language cached to skip download/transcription
                 final_vtt = None
                 if request.check_cache and video_id:
-                     cached_original = get_cached_subtitle(video_id, "original")
-                     if cached_original:
-                         print(f"[DEBUG] Using cached 'original' transcription for translation to {request.target_language}")
-                         final_vtt = cached_original["vtt"]
-                         # Skip download and transcription steps
+                    cached_original = get_cached_subtitle(video_id, "original")
+                    if cached_original:
+                        print(
+                            f"[DEBUG] Using cached 'original' transcription for translation to {request.target_language}"
+                        )
+                        final_vtt = cached_original["vtt"]
+                        # Skip download and transcription steps
+                        await queue.put(
+                            json.dumps(
+                                {
+                                    "action": "progress",
+                                    "stage": "cached",
+                                    "progress": 70,
+                                    "details": "Using cached transcription",
+                                }
+                            )
+                            + "\n"
+                        )
 
                 if not final_vtt:
                     # Need to download and transcribe
@@ -316,55 +400,126 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                     audio_path_ref[0] = audio_path
                     print(f"[DEBUG] Using temp file: {audio_path}")
                     start_download = time.time()
-                    await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 10, "details": "Downloading audio (yt-dlp)..."}) + "\n")
-    
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "downloading",
+                                "progress": 10,
+                                "details": "Downloading audio (yt-dlp)...",
+                            }
+                        )
+                        + "\n"
+                    )
+
                     loop = asyncio.get_event_loop()
-                    audio_path = await loop.run_in_executor(None, download_audio, request.video_url, audio_path)
-                    
+                    audio_path = await loop.run_in_executor(
+                        None, download_audio, request.video_url, audio_path
+                    )
+
                     download_time = time.time() - start_download
-                    await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 30, "details": f"Download complete ({download_time:.1f}s)"}) + "\n")
-    
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "downloading",
+                                "progress": 30,
+                                "details": f"Download complete ({download_time:.1f}s)",
+                            }
+                        )
+                        + "\n"
+                    )
+
                     if os.path.exists(audio_path):
                         file_size = os.path.getsize(audio_path)
                         if file_size > MAX_AUDIO_SIZE_BYTES:
-                            await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 100, "details": "Compressing audio..."}) + "\n")
-                            compressed_path = get_temp_audio_path('.mp3')
-                            await loop.run_in_executor(None, compress_audio, audio_path, compressed_path)
+                            await queue.put(
+                                json.dumps(
+                                    {
+                                        "action": "progress",
+                                        "stage": "downloading",
+                                        "progress": 100,
+                                        "details": "Compressing audio...",
+                                    }
+                                )
+                                + "\n"
+                            )
+                            compressed_path = get_temp_audio_path(".mp3")
+                            await loop.run_in_executor(
+                                None, compress_audio, audio_path, compressed_path
+                            )
                             os.remove(audio_path)
                             audio_path = compressed_path
                             audio_path_ref[0] = audio_path
-    
+
                     start_transcribe = time.time()
                     print(f"Starting transcription with {request.transcription_model}...")
-                    await queue.put(json.dumps({"action": "progress", "stage": "transcribing", "progress": 35, "details": "Transcribing..."}) + "\n")
-    
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "transcribing",
+                                "progress": 35,
+                                "details": "Transcribing...",
+                            }
+                        )
+                        + "\n"
+                    )
+
                     final_vtt = await provider.transcribe(
                         audio_path=audio_path,
                         model=request.transcription_model,
                         api_key=request.api_key,
                         base_url=request.base_url,
                     )
-                    
+
                     transcribe_time = time.time() - start_transcribe
-                    await queue.put(json.dumps({"action": "progress", "stage": "transcribing", "progress": 70, "details": f"Transcription complete ({transcribe_time:.1f}s)"}) + "\n")
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "transcribing",
+                                "progress": 70,
+                                "details": f"Transcription complete ({transcribe_time:.1f}s)",
+                            }
+                        )
+                        + "\n"
+                    )
 
                     # Cache the ORIGINAL transcription
                     if video_id:
                         set_cached_subtitle(video_id, final_vtt, "original")
                         background_tasks.add_task(cleanup_expired_cache)
 
-
                 if request.target_language != "original":
                     print(f"Starting translation to {request.target_language}...")
                     start_translate = time.time()
-                    await queue.put(json.dumps({"action": "progress", "stage": "translating", "progress": 75, "details": "Translating..."}) + "\n")
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "translating",
+                                "progress": 75,
+                                "details": "Translating...",
+                            }
+                        )
+                        + "\n"
+                    )
 
                     async def progress_callback(stage, progress, details):
-                        # This progress callback is for the translation provider's internal progress,
-                        # not for the overall stage progress.
-                        # We can integrate it if needed, but for now, we'll just print.
-                        print(f"Translation internal progress: {stage} - {progress}% - {details}")
-                        # await queue.put(json.dumps({"action": "progress", "stage": stage, "progress": progress, "details": details}) + "\n")
+                        # Map translation progress (0-100) to overall progress (75-95)
+                        overall_progress = 75 + int(progress * 0.2)
+                        await queue.put(
+                            json.dumps(
+                                {
+                                    "action": "progress",
+                                    "stage": stage,
+                                    "progress": overall_progress,
+                                    "details": details,
+                                }
+                            )
+                            + "\n"
+                        )
 
                     final_vtt = await provider.translate(
                         vtt_content=final_vtt,
@@ -374,22 +529,34 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                         base_url=request.base_url,
                         progress_callback=progress_callback,
                     )
-                    
+
                     translate_time = time.time() - start_translate
-                    await queue.put(json.dumps({"action": "progress", "stage": "translating", "progress": 95, "details": f"Translation complete ({translate_time:.1f}s)"}) + "\n")
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "translating",
+                                "progress": 95,
+                                "details": f"Translation complete ({translate_time:.1f}s)",
+                            }
+                        )
+                        + "\n"
+                    )
 
                 if video_id:
                     set_cached_subtitle(video_id, final_vtt, request.target_language)
                     background_tasks.add_task(cleanup_expired_cache)
 
-                await queue.put(json.dumps({
-                    "action": "transcription_result", 
-                    "success": True, 
-                    "data": {
-                        "vtt": final_vtt,
-                        "cached": False
-                    }
-                }) + "\n")
+                await queue.put(
+                    json.dumps(
+                        {
+                            "action": "transcription_result",
+                            "success": True,
+                            "data": {"vtt": final_vtt, "cached": False},
+                        }
+                    )
+                    + "\n"
+                )
             except Exception as e:
                 await queue.put(json.dumps({"action": "error", "error": str(e)}) + "\n")
             finally:
@@ -401,7 +568,9 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
                         print(f"[WARN] Failed to clean up temp file {audio_path_ref[0]}: {e}")
                 else:
                     if audio_path_ref[0]:
-                        print(f"[DEBUG] Temp file already deleted or not found: {audio_path_ref[0]}")
+                        print(
+                            f"[DEBUG] Temp file already deleted or not found: {audio_path_ref[0]}"
+                        )
                 await queue.put(None)
 
         asyncio.create_task(producer())
@@ -421,144 +590,210 @@ async def summarize_video(request: SummarizeRequest):
         queue = asyncio.Queue()
 
         async def producer():
+            audio_path = None
             try:
+                # Immediate initial progress to signal connection
+                await queue.put(
+                    json.dumps(
+                        {
+                            "action": "progress",
+                            "stage": "initializing",
+                            "progress": 10,
+                            "details": "Connected to backend, analyzing request...",
+                        }
+                    )
+                    + "\n"
+                )
+
                 video_id = get_video_id(request.video_url)
-                audio_path = None
-                
+                print(f"[DEBUG] Summarize request for video_id: {video_id}")
+
                 # Check for cached subtitles first
-                # For summary, we can use ANY language logic, or just 'original'.
-                # Ideally 'original' is best, but if we have 'pt', we *could* summarize from it?
-                # For now, let's stick to 'original' checking.
                 cached = None
                 if video_id:
                     cached = get_cached_subtitle(video_id, "original")
-                
+
+                provider = ProviderFactory.get_provider(request.provider)
+                if not provider:
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "error",
+                                "error": f"Provider '{request.provider}' not found.",
+                            }
+                        )
+                        + "\n"
+                    )
+                    return
+
+                async def sum_progress_callback(stage, progress, details):
+                    # Map internal summary progress to 75% - 95% (if non-cached) or 25% - 95% (if cached)
+                    base_progress = 75 if not cached else 25
+                    range_size = 20 if not cached else 70
+                    overall_progress = base_progress + int(progress * (range_size / 100))
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": stage,
+                                "progress": overall_progress,
+                                "details": details,
+                            }
+                        )
+                        + "\n"
+                    )
+
                 if cached:
-                    await queue.put(json.dumps({"action": "progress", "stage": "cached", "progress": 100, "details": "Using cached transcription"}) + "\n")
-                    
-                    # Extract text with timestamps for summary context
-                    full_text = re.sub(r'WEBVTT\n\n', '', cached["vtt"]).strip()
+                    print(f"[DEBUG] Cache found for video_id: {video_id}")
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "cached",
+                                "progress": 15,
+                                "details": "Using cached transcription",
+                            }
+                        )
+                        + "\n"
+                    )
+                    full_text = re.sub(r"WEBVTT\n\n", "", cached["vtt"]).strip()
+                else:
+                    # No cache available, need to download and transcribe
+                    print(f"[DEBUG] No cache found, downloading audio...")
+                    audio_path = get_temp_audio_path()
 
-                    print(f"Generating summary in {request.summary_language}...")
-                    await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 50, "details": f"Generating summary in {request.summary_language}..."}) + "\n")
-                    
-                    provider = ProviderFactory.get_provider(request.provider)
-                    if not provider:
-                        await queue.put(json.dumps({"action": "error", "error": f"Provider '{request.provider}' not found."}) + "\n")
-                        await queue.put(None)
-                        return
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "downloading",
+                                "progress": 15,
+                                "details": "Downloading video audio...",
+                            }
+                        )
+                        + "\n"
+                    )
 
-                    summary_result = await provider.summarize(
-                        transcript=full_text,
-                        target_language=request.summary_language,
-                        model=request.summarization_model,
+                    loop = asyncio.get_event_loop()
+                    audio_path = await loop.run_in_executor(
+                        None, download_audio, request.video_url, audio_path
+                    )
+                    
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "downloading",
+                                "progress": 35,
+                                "details": "Audio downloaded",
+                            }
+                        )
+                        + "\n"
+                    )
+
+                    if os.path.exists(audio_path):
+                        file_size = os.path.getsize(audio_path)
+                        if file_size > MAX_AUDIO_SIZE_BYTES:
+                            compressed_path = get_temp_audio_path(".mp3")
+                            await loop.run_in_executor(
+                                None, compress_audio, audio_path, compressed_path
+                            )
+                            os.remove(audio_path)
+                            audio_path = compressed_path
+
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "transcribing",
+                                "progress": 45,
+                                "details": "Transcribing audio...",
+                            }
+                        )
+                        + "\n"
+                    )
+
+                    # Use whisper for transcription
+                    transcription_model = (
+                        "whisper-1" if request.provider == "openai" else "whisper-large-v3-turbo"
+                    )
+
+                    vtt_content = await provider.transcribe(
+                        audio_path=audio_path,
+                        model=transcription_model,
                         api_key=request.api_key,
                         base_url=request.base_url,
                     )
 
-                    summary_text = summary_result.get('summary', '')
-                    key_moments = summary_result.get('key_moments', [])
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "action": "progress",
+                                "stage": "transcribing",
+                                "progress": 70,
+                                "details": "Transcription complete",
+                            }
+                        )
+                        + "\n"
+                    )
 
-                    await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 100, "details": "Summary complete"}) + "\n")
+                    if video_id:
+                        set_cached_subtitle(video_id, vtt_content, "original")
+                    
+                    full_text = re.sub(r"WEBVTT\n\n", "", vtt_content).strip()
 
-                    await queue.put(json.dumps({
-                        "action": "summary_result",
-                        "success": True,
-                        "data": {
-                            "summary": summary_text,
-                            "key_moments": key_moments,
-                            "video_id": video_id,
-                            "cached": True
-                        }
-                    }) + "\n")
-                    await queue.put(None)
-                    return
-
-                # No cache available, need to download and transcribe
-                provider = ProviderFactory.get_provider(request.provider)
-                if not provider:
-                    await queue.put(json.dumps({"action": "error", "error": f"Provider '{request.provider}' not found."}) + "\n")
-                    await queue.put(None)
-                    return
-
-                audio_path = get_temp_audio_path()
-
-                print(f"Starting summarization request for: {request.video_url}")
-                await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 10, "details": "Downloading video audio..."}) + "\n")
-
-                loop = asyncio.get_event_loop()
-                audio_path = await loop.run_in_executor(None, download_audio, request.video_url, audio_path)
-                print(f"Audio downloaded: {audio_path}")
-                await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 100, "details": "Audio downloaded"}) + "\n")
-
-                if os.path.exists(audio_path):
-                    file_size = os.path.getsize(audio_path)
-                    if file_size > MAX_AUDIO_SIZE_BYTES:
-                        await queue.put(json.dumps({"action": "progress", "stage": "downloading", "progress": 100, "details": "Compressing audio..."}) + "\n")
-                        compressed_path = get_temp_audio_path('.mp3')
-                        await loop.run_in_executor(None, compress_audio, audio_path, compressed_path)
-                        os.remove(audio_path)
-                        audio_path = compressed_path
-
-                await queue.put(json.dumps({"action": "progress", "stage": "transcribing", "progress": 20, "details": "Transcribing audio..."}) + "\n")
-
-                # Use whisper for transcription, not the summarization model
-                transcription_model = "whisper-1" if request.provider == "openai" else "whisper-large-v3-turbo"
-                
-                vtt_content = await provider.transcribe(
-                    audio_path=audio_path,
-                    model=transcription_model,
-                    api_key=request.api_key,
-                    base_url=request.base_url,
-                )
-                
-                await queue.put(json.dumps({"action": "progress", "stage": "transcribing", "progress": 70, "details": "Transcription complete"}) + "\n")
-
-                # Extract text with timestamps for summary context
-                full_text = re.sub(r'WEBVTT\n\n', '', vtt_content).strip()
-                
-                await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 75, "details": "Generating summary..."}) + "\n")
-
+                # Start actual summary generation
                 summary_result = await provider.summarize(
                     transcript=full_text,
                     target_language=request.summary_language,
                     model=request.summarization_model,
                     api_key=request.api_key,
                     base_url=request.base_url,
+                    progress_callback=sum_progress_callback,
                 )
 
-                # Extract summary and key_moments from the structured response
-                summary_text = summary_result.get('summary', '')
-                key_moments = summary_result.get('key_moments', [])
+                summary_text = summary_result.get("summary", "")
+                key_moments = summary_result.get("key_moments", [])
 
-                await queue.put(json.dumps({"action": "progress", "stage": "summarizing", "progress": 100, "details": "Summary complete"}) + "\n")
+                await queue.put(
+                    json.dumps(
+                        {
+                            "action": "progress",
+                            "stage": "summarizing",
+                            "progress": 100,
+                            "details": "Summary complete",
+                        }
+                    )
+                    + "\n"
+                )
 
-                # Cache the transcription for future use AS ORIGINAL
-                if video_id:
-                    set_cached_subtitle(video_id, vtt_content, "original")
+                await queue.put(
+                    json.dumps(
+                        {
+                            "action": "summary_result",
+                            "success": True,
+                            "data": {
+                                "summary": summary_text,
+                                "key_moments": key_moments,
+                                "video_id": video_id,
+                                "cached": bool(cached),
+                            },
+                        }
+                    )
+                    + "\n"
+                )
 
-                await queue.put(json.dumps({
-                    "action": "summary_result",
-                    "success": True,
-                    "data": {
-                        "summary": summary_text,
-                        "key_moments": key_moments,
-                        "video_id": video_id,
-                        "cached": False
-                    }
-                }) + "\n")
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 await queue.put(json.dumps({"action": "error", "error": str(e)}) + "\n")
             finally:
-                if 'audio_path' in locals() and audio_path and os.path.exists(audio_path):
+                if audio_path and os.path.exists(audio_path):
                     try:
                         os.remove(audio_path)
                         print(f"[DEBUG] Cleaned up temp file: {audio_path}")
                     except Exception as e:
                         print(f"[WARN] Failed to clean up temp file {audio_path}: {e}")
-                else:
-                    if 'audio_path' in locals() and audio_path:
-                        print(f"[DEBUG] Temp file already deleted or not found: {audio_path}")
                 await queue.put(None)
 
         asyncio.create_task(producer())

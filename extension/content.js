@@ -58,18 +58,6 @@ function isExtensionContextInvalid() {
   }
 }
 
-function safeGet(callback, fallback = null) {
-  if (isExtensionContextInvalid()) return fallback;
-  try {
-    return callback();
-  } catch (e) {
-    if (e.message.includes('Extension context invalidated')) {
-      return fallback;
-    }
-    throw e;
-  }
-}
-
 // Backend availability check
 async function checkBackendAvailability() {
   if (isExtensionContextInvalid()) return false;
@@ -143,10 +131,13 @@ function hideProgress() {
 
 function showSummary(data) {
   console.log('[AI Summary] showSummary called', data);
-  
-  const summaryText = typeof data === 'string' ? data : (data.summary || '');
+
+  const summaryText = typeof data === 'string' ? data : data.summary || '';
   const keyMoments = data.key_moments || [];
-  console.log('[AI Summary] Data received:', { hasKeyMoments: keyMoments.length > 0, count: keyMoments.length });
+  console.log('[AI Summary] Data received:', {
+    hasKeyMoments: keyMoments.length > 0,
+    count: keyMoments.length,
+  });
 
   let panel = document.getElementById('ai-summary-panel');
   console.log('[AI Summary] Panel exists:', !!panel);
@@ -186,10 +177,10 @@ function showSummary(data) {
   }
 
   const content = panel.querySelector('#ai-summary-content');
-  
+
   // Build HTML with summary and clickable key moments
   let html = '';
-  
+
   // Summary section
   html += '<div class="ai-summary-text">';
   if (typeof marked !== 'undefined') {
@@ -203,14 +194,14 @@ function showSummary(data) {
       .replace(/^- (.*)/gm, '• $1');
   }
   html += '</div>';
-  
+
   // Key moments section
   if (keyMoments.length > 0) {
     html += '<div class="ai-summary-moments">';
     html += '<h3>Key Moments</h3>';
     html += '<ul class="ai-moments-list">';
-    
-    keyMoments.forEach((moment, index) => {
+
+    keyMoments.forEach((moment) => {
       const timestamp = moment.timestamp || '00:00';
       const description = moment.description || '';
       html += `
@@ -220,15 +211,15 @@ function showSummary(data) {
         </li>
       `;
     });
-    
+
     html += '</ul>';
     html += '</div>';
   }
-  
+
   content.innerHTML = html;
 
   // Add click handlers for key moments
-  content.querySelectorAll('.ai-moment-item').forEach(item => {
+  content.querySelectorAll('.ai-moment-item').forEach((item) => {
     item.addEventListener('click', () => {
       const timestamp = item.dataset.timestamp;
       seekToTimestamp(timestamp);
@@ -254,7 +245,7 @@ function seekToTimestamp(timestamp) {
   // Parse MM:SS or HH:MM:SS format
   const parts = timestamp.split(':').map(Number);
   let seconds = 0;
-  
+
   if (parts.length === 2) {
     // MM:SS
     seconds = parts[0] * 60 + parts[1];
@@ -262,14 +253,14 @@ function seekToTimestamp(timestamp) {
     // HH:MM:SS
     seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
   }
-  
+
   console.log('[AI Summary] Seeking to timestamp:', timestamp, '=', seconds, 'seconds');
-  
+
   // Find YouTube video element and seek
   const video = document.querySelector('video.html5-main-video');
   if (video) {
     video.currentTime = seconds;
-    video.play().catch(() => {});
+    video.play().catch(() => { });
     showSummaryToast(`Jumped to ${timestamp}`);
   } else {
     // Try alternative selectors
@@ -316,28 +307,28 @@ function setupSummaryPanelEvents(panel) {
     const content = panel.querySelector('#ai-summary-content');
 
     switch (action) {
-    case 'copy': {
-      const textToCopy = content.innerText;
-      try {
-        await navigator.clipboard.writeText(textToCopy);
-        showSummaryToast('Copied to clipboard!');
-      } catch (err) {
-        showSummaryToast('Failed to copy');
+      case 'copy': {
+        const textToCopy = content.innerText;
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          showSummaryToast('Copied to clipboard!');
+        } catch (err) {
+          showSummaryToast('Failed to copy');
+        }
+        break;
       }
-      break;
-    }
 
-    case 'font-decrease':
-      adjustSummaryFont(content, -1);
-      break;
+      case 'font-decrease':
+        adjustSummaryFont(content, -1);
+        break;
 
-    case 'font-increase':
-      adjustSummaryFont(content, 1);
-      break;
+      case 'font-increase':
+        adjustSummaryFont(content, 1);
+        break;
 
-    case 'collapse':
-      toggleSummaryCollapse(panel, content);
-      break;
+      case 'collapse':
+        toggleSummaryCollapse(panel, content);
+        break;
     }
   });
 }
@@ -400,11 +391,7 @@ function injectSummaryPanel(panel) {
   }
 
   // Find comments section
-  const commentsSelectors = [
-    '#comments',
-    'ytd-comments',
-    '#comment-section-renderer',
-  ];
+  const commentsSelectors = ['#comments', 'ytd-comments', '#comment-section-renderer'];
 
   let commentsElement = null;
   for (const selector of commentsSelectors) {
@@ -460,13 +447,7 @@ function injectSummaryPanel(panel) {
   // Fallback: try to find any reasonable place
   console.log('[AI Summary] No target found, trying fallback locations');
 
-  const fallbacks = [
-    '#columns',
-    '#primary',
-    '#secondary',
-    '.ytd-watch-flexy',
-    'body',
-  ];
+  const fallbacks = ['#columns', '#primary', '#secondary', '.ytd-watch-flexy', 'body'];
 
   for (const selector of fallbacks) {
     const el = document.querySelector(selector);
@@ -492,37 +473,6 @@ function injectSummaryPanel(panel) {
   document.body.appendChild(panel);
 }
 
-function makeDraggable(el) {
-  let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-  const header = el.querySelector('#ai-summary-header');
-  if (header) {
-    header.onmousedown = dragMouseDown;
-  }
-
-  function dragMouseDown(e) {
-    e.preventDefault();
-    pos3 = e.clientX;
-    pos4 = e.clientY;
-    document.onmouseup = closeDragElement;
-    document.onmousemove = elementDrag;
-  }
-
-  function elementDrag(e) {
-    e.preventDefault();
-    pos1 = pos3 - e.clientX;
-    pos2 = pos4 - e.clientY;
-    pos3 = e.clientX;
-    pos4 = e.clientY;
-    el.style.top = (el.offsetTop - pos2) + 'px';
-    el.style.left = (el.offsetLeft - pos1) + 'px';
-  }
-
-  function closeDragElement() {
-    document.onmouseup = null;
-    document.onmousemove = null;
-  }
-}
-
 function showOverlay(text, duration = 0) {
   let overlay = document.getElementById('ai-status-overlay');
   if (!overlay) {
@@ -538,11 +488,6 @@ function showOverlay(text, duration = 0) {
       overlay.style.display = 'none';
     }, duration);
   }
-}
-
-function hideOverlay() {
-  const overlay = document.getElementById('ai-status-overlay');
-  if (overlay) overlay.style.display = 'none';
 }
 
 // Cache management
@@ -621,7 +566,7 @@ async function getCachedSummary(videoId, lang) {
         console.log('AI Summary: Using cached summary for', videoId, 'lang:', lang);
         return {
           summary: data.summary,
-          key_moments: data.key_moments || []
+          key_moments: data.key_moments || [],
         };
       } else {
         console.log('AI Summary: Cache expired for', videoId);
@@ -695,54 +640,11 @@ async function clearExpiredCache() {
   }
 }
 
-// Retry mechanism
-async function fetchWithRetry(url, options, maxRetries = 3) {
-  let lastError;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        return response;
-      }
-
-      const errorText = await response.text();
-      lastError = new Error(`HTTP ${response.status}: ${errorText}`);
-
-      // Don't retry on client errors (4xx)
-      if (response.status >= 400 && response.status < 500) {
-        throw lastError;
-      }
-    } catch (error) {
-      lastError = error;
-      if (attempt < maxRetries - 1) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`AI Subtitles: Retry ${attempt + 1}/${maxRetries} in ${delay}ms`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError;
-}
-
 // Global state for subtitle management
 let cachedSubtitles = null;
 let subtitlesVisible = false;
 let subtitleInterval = null;
 let currentVideoUrl = null;
-let currentVideoId = null;
-let cachedSummary = null;
-let summaryLanguage = null;
 
 function clearSubtitleState() {
   cachedSubtitles = null;
@@ -768,7 +670,6 @@ function clearSubtitleState() {
 
 function checkVideoChange() {
   const newUrl = window.location.href;
-  const newVideoId = getVideoId(newUrl);
 
   if (currentVideoUrl && currentVideoUrl !== newUrl) {
     console.log('AI Subtitles: Video changed, clearing state');
@@ -776,7 +677,6 @@ function checkVideoChange() {
   }
 
   currentVideoUrl = newUrl;
-  currentVideoId = newVideoId;
 }
 
 // UI Injection
@@ -871,7 +771,7 @@ async function generateSummary() {
     btn.style.opacity = 0.3;
   }
 
-  updateProgress('Checking backend...', 5, '', 'Generating Summary');
+  updateProgress('Checking backend...', 2, '', 'Generating Summary');
 
   const backendAvailable = await checkBackendAvailability();
   if (!backendAvailable) {
@@ -891,7 +791,7 @@ async function generateSummary() {
     return;
   }
 
-  updateProgress('Checking settings...', 10, '', 'Generating Summary');
+  updateProgress('Checking settings...', 5, '', 'Generating Summary');
 
   if (isExtensionContextInvalid() || !chrome.storage || !chrome.storage.local) {
     showOverlay('Extension updated. Please refresh the page.', 5000);
@@ -945,7 +845,7 @@ async function generateSummary() {
       }
     }
 
-    updateProgress('Preparing...', 15, '', 'Generating Summary');
+    updateProgress('Checking cache...', 8, '', 'Generating Summary');
 
     const port = chrome.runtime.connect({ name: 'summary-port' });
 
@@ -956,8 +856,9 @@ async function generateSummary() {
     port.onMessage.addListener((response) => {
       if (response.action === 'progress') {
         const stageMessages = {
+          initializing: 'Initializing...',
           cached: 'Using cached transcription...',
-          downloading: 'Downloading Audio...',
+          downloading: 'Downloading...',
           transcribing: 'Transcribing for summary...',
           summarizing: 'Generating Summary...',
           complete: 'Complete!',
@@ -991,7 +892,7 @@ async function generateSummary() {
 
           // Cache the summary (fire and forget)
           if (videoId && summaryLanguage) {
-            setCachedSummary(videoId, summaryLanguage, response.data).catch(err => {
+            setCachedSummary(videoId, summaryLanguage, response.data).catch((err) => {
               console.warn('AI Summary: Failed to cache summary:', err);
             });
           }
@@ -1122,7 +1023,7 @@ async function generateSubtitles() {
     btn.style.opacity = 0.3;
   }
 
-  updateProgress('Checking backend...', 5);
+  updateProgress('Checking backend...', 2, '', 'Generating Subtitles');
 
   const backendAvailable = await checkBackendAvailability();
   if (!backendAvailable) {
@@ -1162,7 +1063,7 @@ async function generateSubtitles() {
     }
   }
 
-  updateProgress('Checking settings...', 10);
+  updateProgress('Checking settings...', 5, '', 'Generating Subtitles');
 
   if (isExtensionContextInvalid() || !chrome.storage || !chrome.storage.local) {
     showOverlay('Extension updated. Please refresh the page.', 5000);
@@ -1170,16 +1071,23 @@ async function generateSubtitles() {
   }
 
   try {
-    const { provider, openaiApiKey, groqApiKey, baseUrl, targetLanguage, transcriptionModel, translationModel } =
-      await chrome.storage.local.get([
-        'provider',
-        'openaiApiKey',
-        'groqApiKey',
-        'baseUrl',
-        'targetLanguage',
-        'transcriptionModel',
-        'translationModel',
-      ]);
+    const {
+      provider,
+      openaiApiKey,
+      groqApiKey,
+      baseUrl,
+      targetLanguage,
+      transcriptionModel,
+      translationModel,
+    } = await chrome.storage.local.get([
+      'provider',
+      'openaiApiKey',
+      'groqApiKey',
+      'baseUrl',
+      'targetLanguage',
+      'transcriptionModel',
+      'translationModel',
+    ]);
 
     const apiKey = provider === 'groq' ? groqApiKey : openaiApiKey;
 
@@ -1204,7 +1112,7 @@ async function generateSubtitles() {
 
     const videoUrl = window.location.href;
 
-    updateProgress('Preparing...', 15);
+    updateProgress('Checking cache...', 8, '', 'Generating Subtitles');
 
     const port = chrome.runtime.connect({ name: 'transcription-port' });
 
@@ -1221,7 +1129,9 @@ async function generateSubtitles() {
         progressStage = response.stage;
 
         const stageMessages = {
-          downloading: 'Downloading Audio (yt-dlp)...',
+          initializing: 'Initializing...',
+          cached: 'Using cached transcription...',
+          downloading: 'Downloading...',
           transcribing: 'Transcribing with AI...',
           translating: 'Translating Subtitles...',
           summarizing: 'Generating Summary...',
@@ -1231,7 +1141,8 @@ async function generateSubtitles() {
         updateProgress(
           stageMessages[progressStage] || progressStage,
           progressValue,
-          response.details || ''
+          response.details || '',
+          'Generating Subtitles'
         );
       } else if (response.action === 'transcription_result') {
         clearInterval(keepAliveInterval);
@@ -1429,7 +1340,6 @@ window.addEventListener('pagehide', cleanup);
 
 // Initial check and cache cleanup
 currentVideoUrl = window.location.href;
-currentVideoId = getVideoId(currentVideoUrl);
 injectButton();
 
 // Listen for messages from popup

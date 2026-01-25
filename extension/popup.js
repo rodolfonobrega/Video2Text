@@ -1,12 +1,11 @@
 document.addEventListener('DOMContentLoaded', () => {
   const OPENAI_API_KEY_REGEX = /^sk-[a-zA-Z0-9-_]+$/;
-  const GROQ_API_KEY_REGEX = /^gsk_[a-zA-Z0-9-_]+$/; // Removido restrição agressiva no save se necessário
   const BACKEND_URL = 'http://127.0.0.1:8000';
 
-  // Armazenar modelos carregados da API
+  // Store models loaded from the API
   let availableModels = {
     openai: { transcription: [], translation: [] },
-    groq: { transcription: [], translation: [] }
+    groq: { transcription: [], translation: [] },
   };
 
   const PROVIDER_DEFAULTS = {
@@ -18,8 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'gpt-4o', name: 'GPT-4o' },
         { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
         { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-        { id: 'gpt-5-nano', name: 'GPT-5 Nano' }
-      ]
+        { id: 'gpt-5-nano', name: 'GPT-5 Nano' },
+      ],
     },
     groq: {
       transcriptionModel: 'whisper-large-v3-turbo',
@@ -32,9 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B' },
         { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout' },
         { id: 'meta-llama/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick' },
-        { id: 'qwen/qwen3-32b', name: 'Qwen3 32B' }
-      ]
-    }
+        { id: 'qwen/qwen3-32b', name: 'Qwen3 32B' },
+      ],
+    },
   };
 
   const transcriptionModelEl = document.getElementById('transcriptionModel');
@@ -47,14 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const groqApiKeyEl = document.getElementById('groqApiKey');
   const baseUrlEl = document.getElementById('baseUrl');
   const baseUrlGroup = baseUrlEl?.closest('.form-group');
-  const saveBtn = document.getElementById('saveBtn');
-  const status = document.getElementById('status');
-  const clearCacheBtn = document.getElementById('clearCacheBtn');
+
   const positionEl = document.getElementById('subtitlePosition');
   const sizeEl = document.getElementById('subtitleSize');
   const targetLanguageEl = document.getElementById('targetLanguage');
   const summaryLanguageEl = document.getElementById('summaryLanguage');
-
 
   function updateProviderUI() {
     if (!providerEl || !openaiApiKeyGroup || !groqApiKeyGroup) return;
@@ -65,31 +61,32 @@ document.addEventListener('DOMContentLoaded', () => {
       openaiApiKeyGroup.style.display = 'block';
       groqApiKeyGroup.style.display = 'none';
 
-      // Mostrar baseUrl para OpenAI
+      // Show baseUrl for OpenAI
       if (baseUrlGroup) {
         baseUrlGroup.style.display = 'block';
       }
 
-      // Atualizar placeholder do baseUrl
+      // Update baseUrl placeholder
       if (baseUrlEl) {
         baseUrlEl.placeholder = 'https://api.openai.com/v1';
       }
-    } else { // provider === 'groq'
+    } else {
+      // provider === 'groq'
       openaiApiKeyGroup.style.display = 'none';
       groqApiKeyGroup.style.display = 'block';
 
-      // Esconder baseUrl para Groq (não é necessário)
+      // Hide baseUrl for Groq (not needed)
       if (baseUrlGroup) {
         baseUrlGroup.style.display = 'none';
       }
 
-      // Atualizar placeholder do baseUrl quando Groq
+      // Update baseUrl placeholder for Groq
       if (baseUrlEl) {
         baseUrlEl.placeholder = 'Auto-detected (not needed for Groq)';
       }
     }
 
-    // Atualizar dropdowns de modelos quando provider muda
+    // Update model dropdowns when provider changes
     populateModelDropdowns(provider);
   }
 
@@ -98,45 +95,69 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch(`${BACKEND_URL}/models`);
       if (!response.ok) {
         console.error('Failed to load models from API');
-        populateModelDropdowns(providerEl?.value || 'groq', true, savedTranscription, savedTranslation, savedSummarization);
+        populateModelDropdowns(
+          providerEl?.value || 'groq',
+          true,
+          savedTranscription,
+          savedTranslation,
+          savedSummarization
+        );
         return;
       }
 
       const data = await response.json();
 
-      // Organizar modelos por provider
-      data.providers.forEach(provider => {
+      // Organize models by provider
+      data.providers.forEach((provider) => {
         availableModels[provider.id] = {
           transcription: provider.transcription_models || [],
-          translation: provider.translation_models || []
+          translation: provider.translation_models || [],
         };
       });
 
-      // Popular dropdowns com o provider atual
+      // Populate dropdowns with the current provider
       const currentProvider = providerEl?.value || 'groq';
-      populateModelDropdowns(currentProvider, false, savedTranscription, savedTranslation, savedSummarization);
+      populateModelDropdowns(
+        currentProvider,
+        false,
+        savedTranscription,
+        savedTranslation,
+        savedSummarization
+      );
     } catch (error) {
       console.error('Error loading models:', error);
-      populateModelDropdowns(providerEl?.value || 'groq', true, savedTranscription, savedTranslation, savedSummarization);
+      populateModelDropdowns(
+        providerEl?.value || 'groq',
+        true,
+        savedTranscription,
+        savedTranslation,
+        savedSummarization
+      );
     }
   }
 
-  function populateModelDropdowns(provider, useFallback = false, savedTranscription = null, savedTranslation = null, savedSummarization = null) {
+  function populateModelDropdowns(
+    provider,
+    useFallback = false,
+    savedTranscription = null,
+    savedTranslation = null,
+    savedSummarization = null
+  ) {
     if (!transcriptionModelEl || !translationModelEl || !summarizationModelEl) return;
 
-    // Popular dropdown de transcrição
+    // Populate transcription dropdown
     transcriptionModelEl.innerHTML = '';
-    const transcriptionModels = useFallback ? [] : (availableModels[provider]?.transcription || []);
+    const transcriptionModels = useFallback ? [] : availableModels[provider]?.transcription || [];
 
     if (transcriptionModels.length === 0) {
-      // Fallback para valores padrão
+      // Fallback for default values
       const defaultModel = PROVIDER_DEFAULTS[provider]?.transcriptionModel || 'whisper-1';
       const option = document.createElement('option');
       option.value = defaultModel;
       option.textContent = defaultModel;
       transcriptionModelEl.appendChild(option);
     } else {
-      transcriptionModels.forEach(model => {
+      transcriptionModels.forEach((model) => {
         const option = document.createElement('option');
         option.value = model.id;
         option.textContent = model.name;
@@ -144,39 +165,45 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Prioridade: saved > stored > default
-    if (savedTranscription && Array.from(transcriptionModelEl.options).some(opt => opt.value === savedTranscription)) {
+    // Priority: saved > stored > default
+    if (
+      savedTranscription &&
+      Array.from(transcriptionModelEl.options).some((opt) => opt.value === savedTranscription)
+    ) {
       transcriptionModelEl.value = savedTranscription;
     } else {
-      transcriptionModelEl.value = PROVIDER_DEFAULTS[provider]?.transcriptionModel || transcriptionModelEl.options[0]?.value;
+      transcriptionModelEl.value =
+        PROVIDER_DEFAULTS[provider]?.transcriptionModel || transcriptionModelEl.options[0]?.value;
     }
 
-    // Popular dropdown de tradução
+    // Populate translation dropdown
     translationModelEl.innerHTML = '';
-    const translationModels = useFallback ? [] : (availableModels[provider]?.translation || []);
+    const translationModels = useFallback ? [] : availableModels[provider]?.translation || [];
 
     if (translationModels.length === 0) {
-      // Fallback para lista de objetos
-      const fallbackList = PROVIDER_DEFAULTS[provider]?.fallback_translation || [{ id: 'gpt-4o-mini', name: 'GPT-4o Mini' }];
-      fallbackList.forEach(m => {
+      // Fallback for object list
+      const fallbackList = PROVIDER_DEFAULTS[provider]?.fallback_translation || [
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+      ];
+      fallbackList.forEach((m) => {
         const option = document.createElement('option');
         option.value = m.id;
         option.textContent = m.name;
         translationModelEl.appendChild(option);
       });
     } else {
-      translationModels.forEach(model => {
+      translationModels.forEach((model) => {
         const option = document.createElement('option');
         option.value = model.id;
 
-        // Adicionar nome e badge se suportar structured output
+        // Add name and badge if structured output is supported
         let text = model.name;
         if (model.supports_structured_output) {
-          text += ' [JSON]';  // Badge para structured output
+          text += ' [JSON]'; // Badge for structured output
         }
         option.textContent = text;
 
-        // Adicionar descrição como data attribute para tooltip futuro
+        // Add description as data attribute for future tooltip
         if (model.description) {
           option.setAttribute('title', model.description);
         }
@@ -185,33 +212,46 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Prioridade: saved > stored > default
-    if (savedTranslation && Array.from(translationModelEl.options).some(opt => opt.value === savedTranslation)) {
+    // Priority: saved > stored > default
+    if (
+      savedTranslation &&
+      Array.from(translationModelEl.options).some((opt) => opt.value === savedTranslation)
+    ) {
       translationModelEl.value = savedTranslation;
     } else {
-      translationModelEl.value = PROVIDER_DEFAULTS[provider]?.translationModel || translationModelEl.options[0]?.value;
+      translationModelEl.value =
+        PROVIDER_DEFAULTS[provider]?.translationModel || translationModelEl.options[0]?.value;
     }
 
-    // Popular dropdown de resumo
+    // Populate summary dropdown
     summarizationModelEl.innerHTML = '';
-    // Para o resumo, usamos os mesmos modelos de tradução
-    const summarizationModels = translationModels.length > 0 ? translationModels : (PROVIDER_DEFAULTS[provider]?.fallback_translation || [{ id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B' }]);
+    // For summary, we use the same translation models
+    const summarizationModels =
+      translationModels.length > 0
+        ? translationModels
+        : PROVIDER_DEFAULTS[provider]?.fallback_translation || [
+          { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B' },
+        ];
 
-    summarizationModels.forEach(model => {
+    summarizationModels.forEach((model) => {
       const option = document.createElement('option');
       option.value = model.id;
       option.textContent = model.name;
       summarizationModelEl.appendChild(option);
     });
 
-    // Prioridade: saved > stored > default
-    if (savedSummarization && Array.from(summarizationModelEl.options).some(opt => opt.value === savedSummarization)) {
+    // Priority: saved > stored > default
+    if (
+      savedSummarization &&
+      Array.from(summarizationModelEl.options).some((opt) => opt.value === savedSummarization)
+    ) {
       summarizationModelEl.value = savedSummarization;
     } else {
-      summarizationModelEl.value = PROVIDER_DEFAULTS[provider]?.summarizationModel || summarizationModelEl.options[0]?.value;
+      summarizationModelEl.value =
+        PROVIDER_DEFAULTS[provider]?.summarizationModel || summarizationModelEl.options[0]?.value;
     }
 
-    // Atualizar notas
+    // Update notes
     updateModelNotes(provider);
   }
 
@@ -220,29 +260,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const translationNote = document.getElementById('translationModelNote');
 
     if (transcriptionNote) {
-      transcriptionNote.textContent = provider === 'groq' ?
-        'Ultra-fast transcription with LPUs' :
-        'OpenAI Whisper model';
+      transcriptionNote.textContent =
+        provider === 'groq' ? 'Ultra-fast transcription with LPUs' : 'OpenAI Whisper model';
     }
 
     if (translationNote) {
       const selectedModel = translationModelEl?.value || '';
-      const modelData = availableModels[provider]?.translation.find(m => m.id === selectedModel);
+      const modelData = availableModels[provider]?.translation.find((m) => m.id === selectedModel);
 
       if (modelData?.supports_structured_output) {
         translationNote.textContent = '✓ Structured Output enabled (100% schema adherence)';
         translationNote.style.color = '#27ae60';
       } else {
-        // Se não houver modelData (ex: fallback), ou se não suportar structured output
-        const fallbackModel = PROVIDER_DEFAULTS[provider]?.fallback_translation.find(m => m.id === selectedModel);
-        translationNote.textContent = modelData?.description || fallbackModel?.description || 'Standard JSON output';
+        // If no modelData (e.g., fallback) or structured output not supported
+        const fallbackModel = PROVIDER_DEFAULTS[provider]?.fallback_translation.find(
+          (m) => m.id === selectedModel
+        );
+        translationNote.textContent =
+          modelData?.description || fallbackModel?.description || 'Standard JSON output';
         translationNote.style.color = '#95a5a6';
       }
     }
   }
 
   function applyProviderDefaults() {
-    if (!providerEl || !transcriptionModelEl || !translationModelEl || !summarizationModelEl) return;
+    if (!providerEl || !transcriptionModelEl || !translationModelEl || !summarizationModelEl)
+      return;
 
     const provider = providerEl.value;
     const defaults = PROVIDER_DEFAULTS[provider];
@@ -292,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (translationModelEl) {
     translationModelEl.addEventListener('change', () => {
       translationModelEl.dataset.userModifiedTranslation = 'true';
-      // Atualizar nota quando modelo muda
+      // Update note when model changes
       const provider = providerEl?.value || 'groq';
       updateModelNotes(provider);
     });
@@ -313,14 +356,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function checkBackendStatus() {
     const statusEl = document.getElementById('backend-status');
     const statusText = statusEl?.querySelector('.status-text');
-    
+
     if (!statusEl || !statusText) return;
 
     statusEl.className = 'checking';
     statusText.textContent = 'Checking backend...';
 
     fetch(`${BACKEND_URL}/health`, { signal: AbortSignal.timeout(3000) })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           statusEl.className = 'online';
           statusText.textContent = 'Backend online';
@@ -328,16 +371,27 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error('Backend returned error');
         }
       })
-      .catch(error => {
+      .catch(() => {
         statusEl.className = 'offline';
         statusText.textContent = 'Backend offline - start with "make dev"';
       });
   }
 
   chrome.storage.local.get(
-    ['provider', 'openaiApiKey', 'groqApiKey', 'baseUrl', 'targetLanguage', 'summaryLanguage', 'transcriptionModel', 'translationModel', 'summarizationModel', 'subtitlePosition', 'subtitleSize'],
+    [
+      'provider',
+      'openaiApiKey',
+      'groqApiKey',
+      'baseUrl',
+      'targetLanguage',
+      'summaryLanguage',
+      'transcriptionModel',
+      'translationModel',
+      'summarizationModel',
+      'subtitlePosition',
+      'subtitleSize',
+    ],
     (result) => {
-
       if (providerEl) providerEl.value = result.provider || 'groq';
       if (openaiApiKeyEl) openaiApiKeyEl.value = result.openaiApiKey || '';
       if (groqApiKeyEl) groqApiKeyEl.value = result.groqApiKey || '';
@@ -345,10 +399,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (targetLanguageEl) targetLanguageEl.value = result.targetLanguage || 'en';
       if (summaryLanguageEl) summaryLanguageEl.value = result.summaryLanguage || 'en';
 
-      // ATUALIZAÇÃO CRÍTICA: Sincronizar UI após carregar o provider
+      // CRITICAL UPDATE: Sync UI after loading provider
       updateProviderUI();
 
-      // Carregar modelos PRIMEIRO (antes de setar valores salvos)
+      // Load models FIRST (before setting saved values)
       loadModels(result.transcriptionModel, result.translationModel, result.summarizationModel);
 
       if (positionEl) positionEl.value = result.subtitlePosition || '10';
@@ -371,7 +425,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const subtitlePosition = document.getElementById('subtitlePosition').value;
     const subtitleSize = document.getElementById('subtitleSize').value;
 
-    const status = document.getElementById('status');
     const openaiApiKeyError = document.getElementById('openaiApiKeyError');
     const groqApiKeyError = document.getElementById('groqApiKeyError');
 
@@ -384,7 +437,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       if (!OPENAI_API_KEY_REGEX.test(openaiApiKey)) {
-        if (openaiApiKeyError) openaiApiKeyError.textContent = 'Invalid OpenAI API Key format (sk-...)';
+        if (openaiApiKeyError)
+          openaiApiKeyError.textContent = 'Invalid OpenAI API Key format (sk-...)';
         return;
       }
     } else {
@@ -392,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (groqApiKeyError) groqApiKeyError.textContent = 'Groq API Key is required';
         return;
       }
-      // Relaxando regex para permitir chaves variadas
+      // Relaxing regex to allow varied keys
       if (groqApiKey.length < 10) {
         if (groqApiKeyError) groqApiKeyError.textContent = 'Invalid Groq API Key (too short)';
         return;
@@ -414,18 +468,23 @@ document.addEventListener('DOMContentLoaded', () => {
         subtitleSize: subtitleSize,
       },
       () => {
-        console.log('Settings saved to storage:', { provider, groqKey: groqApiKey ? '***' : 'none' });
-        status.textContent = 'Settings saved!';
-        status.style.color = '#27ae60';
-        setTimeout(() => {
-          status.textContent = '';
-        }, 2000);
+        console.log('Settings saved to storage:', {
+          provider,
+          groqKey: groqApiKey ? '***' : 'none',
+        });
+        const status = document.getElementById('status');
+        if (status) {
+          status.textContent = 'Settings saved!';
+          status.style.color = '#27ae60';
+          setTimeout(() => {
+            status.textContent = '';
+          }, 2000);
+        }
       }
     );
   });
 
   document.getElementById('clearCacheBtn').addEventListener('click', async () => {
-    const status = document.getElementById('status');
     const clearBtn = document.getElementById('clearCacheBtn');
 
     try {
@@ -441,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const SUMMARY_PREFIX = 'yt_summary_cache_';
       const allData = await chrome.storage.local.get(null);
       const keysToRemove = Object.keys(allData).filter(
-        key => key.startsWith(SUBTITLES_PREFIX) || key.startsWith(SUMMARY_PREFIX)
+        (key) => key.startsWith(SUBTITLES_PREFIX) || key.startsWith(SUMMARY_PREFIX)
       );
       if (keysToRemove.length > 0) {
         await chrome.storage.local.remove(keysToRemove);
@@ -449,20 +508,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab) {
-        chrome.tabs.sendMessage(tab.id, { action: 'clear-local-state' }).catch(() => {
-        });
+        chrome.tabs.sendMessage(tab.id, { action: 'clear-local-state' }).catch(() => { });
       }
 
-      status.textContent = `Full Reset Complete! Removed ${serverData.removed_count} server entries + ${keysToRemove.length} local entries (subtitles + summaries).`;
-      status.style.color = '#27ae60';
+      const status = document.getElementById('status');
+      if (status) {
+        status.textContent = `Full Reset Complete! Removed ${serverData.removed_count} server entries + ${keysToRemove.length} local entries (subtitles + summaries).`;
+        status.style.color = '#27ae60';
 
-      setTimeout(() => {
-        status.textContent = '';
-      }, 3000);
-    } catch (error) {
-      console.error('Failed to clear cache:', error);
-      status.textContent = 'Failed to clear cache. Check if backend is running.';
-      status.style.color = '#e74c3c';
+        setTimeout(() => {
+          status.textContent = '';
+        }, 3000);
+      }
+    } catch {
+      console.error('Failed to clear cache');
+      const status = document.getElementById('status');
+      if (status) {
+        status.textContent = 'Failed to clear cache. Check if backend is running.';
+        status.style.color = '#e74c3c';
+      }
     } finally {
       clearBtn.disabled = false;
       clearBtn.textContent = 'Clear Server Cache';
