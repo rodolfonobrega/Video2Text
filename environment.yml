@@ -1,4 +1,4 @@
-name: youtube_extension
+name: video2text
 channels:
   - conda-forge
 dependencies:

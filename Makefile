@@ -20,8 +20,8 @@ install:
 
 setup:
 	@echo "Setting up conda environment..."
-	conda env create -f environment.yml || conda create -n youtube_extension python=3.12
-	conda activate youtube_extension
+	conda env create -f environment.yml || conda create -n video2text python=3.12
+	conda activate video2text
 	pip install -r backend/requirements.txt
 	npm install
 

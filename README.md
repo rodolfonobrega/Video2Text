@@ -1,4 +1,4 @@
-# WhisperTube
+# Video2Text
 
 <div align="center">
 
@@ -7,23 +7,48 @@
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Generate AI-powered subtitles for YouTube videos using OpenAI's Whisper, GPT models, and Groq for ultra-fast transcription.
+**Chrome Extension for AI-powered YouTube video transcription and summarization**
+
+Extract audio directly from YouTube videos and generate accurate transcriptions and intelligent summaries using state-of-the-art AI models.
 
 ![Gemini Demo](gemini_demo.png)
 
 </div>
 
-## Features
+## 🎯 What is Video2Text?
 
-- Generate subtitles using AI (Whisper/GPT-4o/Groq)
-- Ultra-fast transcription with Groq's optimized models
-- **Generate AI-powered video summaries with key moments**
-- Translate subtitles to any language
-- Cross-platform support (Windows, macOS, Linux)
-- Docker support for easy deployment
-- Chrome Extension with clean UI
-- Extensible provider architecture
-- Multiple AI provider support (OpenAI, OpenRouter, Groq)
+**Video2Text** is a Chrome browser extension that transforms YouTube videos into text using AI. Unlike YouTube's automatic captions (which are often inaccurate), Video2Text:
+
+- 🎵 **Extracts audio directly** from the video for maximum quality
+- 🤖 **Uses advanced AI models** (OpenAI Whisper, Groq, GPT-4) for accurate transcription
+- 📝 **Generates intelligent summaries** with key moments and timestamps
+- 🌍 **Translates content** to any language with context-aware AI translation
+- ⚡ **Ultra-fast processing** with Groq's optimized inference (10x faster than standard Whisper)
+
+### Why Not Use YouTube's Auto-Generated Captions?
+
+YouTube's automatic captions are often:
+- ❌ Inaccurate, especially with technical content, accents, or multiple speakers
+- ❌ Missing context and proper punctuation
+- ❌ Not available for all videos
+- ❌ Limited translation quality
+
+**Video2Text processes the actual audio** using cutting-edge AI models, delivering:
+- ✅ Higher accuracy transcriptions
+- ✅ Better handling of technical terms and proper nouns
+- ✅ Context-aware translations
+- ✅ AI-generated summaries with key insights
+
+## ✨ Features
+
+- **🎙️ Audio-Based Transcription**: Extracts and processes audio directly from YouTube videos
+- **📊 AI Summaries**: Generate intelligent video summaries with key moments and clickable timestamps
+- **🌐 Smart Translation**: Translate transcriptions to any language using AI (not simple word-for-word translation)
+- **⚡ Multiple AI Providers**: OpenAI, OpenRouter, and Groq (ultra-fast with LPU acceleration)
+- **🎨 Clean Chrome UI**: Seamless integration with YouTube's interface
+- **🐳 Docker Support**: Easy deployment with Docker or local development
+- **🔧 Extensible Architecture**: Add custom AI providers easily
+- **💻 Cross-Platform**: Works on Windows, macOS, and Linux
 
 ## Prerequisites
 
@@ -36,8 +61,8 @@ Generate AI-powered subtitles for YouTube videos using OpenAI's Whisper, GPT mod
 
 ### 1. Clone and Setup
 ```bash
-git clone https://github.com/rodolfonobrega/WhisperTube.git
-cd WhisperTube
+git clone https://github.com/rodolfonobrega/Video2Text.git
+cd Video2Text
 ```
 
 ### 2. Start Backend with Docker
@@ -68,12 +93,25 @@ Backend will be available at http://localhost:8000
 - Click **Save Settings**
 
 ### 5. Use the Extension
-1. Open a YouTube video
-2. Click the **Generate AI Subtitles** button (✨ icon) in player controls
-3. Wait for AI processing
-4. Subtitles will appear automatically
-5. **Generate Summary**: Click the summary button (📝) to get AI-powered video summary with key moments
-6. **Navigate Key Moments**: Click on any timestamp in the summary to jump to that moment in the video
+
+#### 🎙️ Transcription (Audio → Text)
+1. **Open any YouTube video**
+2. Click the **✨ Generate AI Subtitles** button in the video player controls
+3. The extension will:
+   - Extract the audio from the video
+   - Send it to the AI model for transcription
+   - Display accurate subtitles with timestamps
+4. **Subtitles appear automatically** below the video
+
+#### 📝 Summary (Audio → AI Summary)
+1. **With the video open**, click the **📝 Summary** button
+2. The extension will:
+   - Extract and analyze the audio
+   - Generate an AI-powered summary with key insights
+   - Create clickable timestamps for important moments
+3. **Navigate the video**: Click any timestamp in the summary to jump to that moment
+
+> **💡 Pro Tip**: Both features work by extracting the actual audio from the video, ensuring higher quality than YouTube's auto-generated captions. The first time you use it on a video, the audio extraction may take a few seconds.
 
 ## Development Setup
 
@@ -107,8 +145,8 @@ make docker-restart
 make setup
 
 # Or manually:
-conda create -n whispertube python=3.12
-conda activate whispertube
+conda create -n video2text python=3.12
+conda activate video2text
 pip install -r backend/requirements.txt
 npm install
 ```
@@ -181,11 +219,77 @@ Access via extension popup in Chrome toolbar:
   - Cost-effective for high-volume usage
   - Optimized for real-time applications
 
+## 🔧 How It Works
+
+Video2Text uses a **client-server architecture** to process YouTube videos:
+
+### Audio Processing Pipeline
+
+```
+┌─────────────────┐
+│  YouTube Video  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│   Chrome Extension (Frontend)       │
+│  • Detects YouTube page             │
+│  • Extracts audio using yt-dlp      │
+│  • Sends to backend API             │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│   Python Backend (FastAPI)          │
+│  • Receives audio file              │
+│  • Sends to AI provider             │
+│  • Processes response               │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│   AI Provider (OpenAI/Groq)         │
+│  • Whisper: Audio → Text            │
+│  • GPT/LLM: Text → Translation      │
+│  • GPT/LLM: Text → Summary          │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│   Chrome Extension (Display)        │
+│  • Renders subtitles with VTT       │
+│  • Shows summary with timestamps    │
+│  • Enables click-to-seek            │
+└─────────────────────────────────────┘
+```
+
+### Key Components
+
+1. **Audio Extraction** (yt-dlp)
+   - Downloads audio stream directly from YouTube
+   - Converts to format compatible with AI models
+   - No dependency on YouTube's caption system
+
+2. **Transcription** (Whisper AI)
+   - Processes raw audio with state-of-the-art speech recognition
+   - Generates accurate timestamps for each segment
+   - Handles multiple languages, accents, and audio quality
+
+3. **Translation** (GPT/LLM)
+   - Context-aware translation (not word-for-word)
+   - Preserves technical terms and meaning
+   - Maintains timestamp synchronization
+
+4. **Summarization** (GPT/LLM)
+   - Analyzes full transcription
+   - Identifies key moments and topics
+   - Generates structured summary with clickable timestamps
+
 ## Architecture
 
 ### Project Structure
 ```
-WhisperTube/
+Video2Text/
 ├── backend/
 │   ├── main.py              # FastAPI server
 │   ├── requirements.txt     # Python dependencies
