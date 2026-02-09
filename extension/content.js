@@ -129,6 +129,57 @@ function hideProgress() {
   }
 }
 
+/**
+ * Apply YouTube's theme CSS variables to the summary panel.
+ * This ensures the panel matches YouTube's current theme (light/dark).
+ */
+function applyYouTubeThemeVariables(panel) {
+  if (!panel) return;
+
+  try {
+    // Get the computed styles from the document element
+    const rootStyles = getComputedStyle(document.documentElement);
+
+    // Map of YouTube CSS variables to our custom properties
+    const ytVariables = {
+      '--yt-spec-general-background-a': '--panel-bg',
+      '--yt-spec-general-background-b': '--panel-header-bg',
+      '--yt-spec-text-primary': '--panel-text-primary',
+      '--yt-spec-text-secondary': '--panel-text-secondary',
+      '--yt-spec-10-percent-layer': '--panel-border',
+    };
+
+    // Apply YouTube variables to the panel
+    for (const [ytVar, panelVar] of Object.entries(ytVariables)) {
+      const value = rootStyles.getPropertyValue(ytVar).trim();
+      if (value) {
+        panel.style.setProperty(panelVar, value);
+        console.log(`[AI Summary] Applied ${ytVar} = ${value} to ${panelVar}`);
+      } else {
+        console.log(`[AI Summary] YouTube variable ${ytVar} not found, using CSS fallback`);
+      }
+    }
+
+    // Also try to get variables from ytd-app if available (more reliable)
+    const ytdApp = document.querySelector('ytd-app');
+    if (ytdApp) {
+      const appStyles = getComputedStyle(ytdApp);
+      for (const [ytVar, panelVar] of Object.entries(ytVariables)) {
+        const value = appStyles.getPropertyValue(ytVar).trim();
+        if (value && !panel.style.getPropertyValue(panelVar)) {
+          panel.style.setProperty(panelVar, value);
+          console.log(`[AI Summary] Applied ${ytVar} from ytd-app = ${value} to ${panelVar}`);
+        }
+      }
+    }
+
+    console.log('[AI Summary] YouTube theme variables applied successfully');
+  } catch (error) {
+    console.error('[AI Summary] Error applying YouTube theme variables:', error);
+    // Fallback to CSS defaults will be used
+  }
+}
+
 function showSummary(data) {
   console.log('[AI Summary] showSummary called', data);
 
@@ -228,6 +279,7 @@ function showSummary(data) {
     item.title = 'Click to jump to this moment';
   });
 
+  applyYouTubeThemeVariables(panel);
   injectSummaryPanel(panel);
 
   requestAnimationFrame(() => {

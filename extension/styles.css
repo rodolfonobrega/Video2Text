@@ -176,13 +176,14 @@
 /* New YouTube-style Summary Panel */
 #ai-summary-panel {
   display: none;
-  background: var(--yt-spec-general-background-a, #212121);
-  border: 1px solid var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+  /* Try JS-applied YouTube variables first, then CSS variables, then fallback */
+  background: var(--panel-bg, var(--yt-spec-general-background-a, #212121));
+  border: 1px solid var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)));
   border-left: 4px solid #3ea6ff;
   border-radius: 12px;
   margin: 20px 0;
   font-family: var(--yt-font-family, Roboto, Arial, sans-serif);
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   transition: all 0.3s ease;
@@ -210,8 +211,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
-  background: var(--yt-spec-general-background-b, #303030);
+  border-bottom: 1px solid var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)));
+  background: var(--panel-header-bg, var(--yt-spec-general-background-b, #303030));
 }
 
 .ai-summary-title {
@@ -220,13 +221,13 @@
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 .ai-summary-title svg {
   width: 20px;
   height: 20px;
-  fill: var(--yt-spec-text-primary, #ffffff);
+  fill: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 .ai-summary-actions {
@@ -254,8 +255,8 @@
 }
 
 .ai-summary-btn:hover {
-  background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
-  color: var(--yt-spec-text-primary, #ffffff);
+  background: var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)));
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 .ai-summary-btn svg {
@@ -283,7 +284,7 @@
   font-size: 1.1em;
   font-weight: 600;
   margin: 16px 0 8px 0;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 #ai-summary-content h2:first-child {
@@ -306,7 +307,7 @@
 
 #ai-summary-content strong {
   font-weight: 600;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 #ai-summary-content em {
@@ -314,21 +315,21 @@
 }
 
 #ai-summary-content code {
-  background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+  background: var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)));
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'Roboto Mono', monospace;
   font-size: 0.9em;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 #ai-summary-content pre {
-  background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+  background: var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)));
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
   margin: 12px 0;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
 }
 
 #ai-summary-content pre code {
@@ -346,23 +347,23 @@
 }
 
 #ai-summary-content blockquote {
-  border-left: 4px solid var(--yt-spec-text-primary, #ffffff);
+  border-left: 4px solid var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
   margin: 12px 0;
   padding-left: 16px;
-  color: var(--yt-spec-text-secondary, #aaaaaa);
+  color: var(--panel-text-secondary, var(--yt-spec-text-secondary, #aaaaaa));
 }
 
 /* Key Moments Section */
 .ai-summary-moments {
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.1));
+  border-top: 1px solid var(--panel-border, var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.1)));
 }
 
 .ai-summary-moments h3 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
   margin: 0 0 12px 0;
 }
 
@@ -379,16 +380,16 @@
   padding: 10px 12px;
   margin: 4px 0;
   border-radius: 8px;
-  background: var(--yt-spec-general-background-a, #303030);
+  background: var(--panel-header-bg, var(--yt-spec-general-background-b, #303030));
   transition: background-color 0.2s;
 }
 
 .ai-moment-item:hover {
-  background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+  background: var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1)));
 }
 
 .ai-moment-item:active {
-  background: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.15));
+  background: var(--panel-border, var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.15)));
 }
 
 .ai-moment-time {
@@ -404,6 +405,6 @@
 
 .ai-moment-desc {
   font-size: 13px;
-  color: var(--yt-spec-text-primary, #ffffff);
+  color: var(--panel-text-primary, var(--yt-spec-text-primary, #ffffff));
   line-height: 1.4;
 }
