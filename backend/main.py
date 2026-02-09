@@ -48,6 +48,7 @@ async def log_request_size(request: Any, call_next: Any) -> Any:
 
 
 subtitle_cache: Dict[str, Dict[str, Any]] = {}
+summary_cache: Dict[str, Dict[str, Any]] = {}
 CACHE_MAX_SIZE = 1000
 CACHE_EXPIRY_HOURS = 24 * 7
 MAX_AUDIO_SIZE_BYTES = 24 * 1024 * 1024
@@ -127,13 +128,23 @@ def get_video_id(url: str) -> Optional[str]:
 def cleanup_expired_cache():
     now = time.time()
     expired = [
-        video_id
-        for video_id, data in subtitle_cache.items()
+        cache_key
+        for cache_key, data in list(subtitle_cache.items())
         if now - data.get("cached_at", 0) > CACHE_EXPIRY_HOURS * 3600
     ]
-    for video_id in expired:
-        del subtitle_cache[video_id]
-    return len(expired)
+    for cache_key in expired:
+        del subtitle_cache[cache_key]
+
+    # Also cleanup summary cache
+    expired_summaries = [
+        cache_key
+        for cache_key, data in list(summary_cache.items())
+        if now - data.get("cached_at", 0) > CACHE_EXPIRY_HOURS * 3600
+    ]
+    for cache_key in expired_summaries:
+        del summary_cache[cache_key]
+
+    return len(expired) + len(expired_summaries)
 
 
 def get_cached_subtitle(video_id: str, language: str = "original") -> Optional[Dict[str, Any]]:
@@ -162,6 +173,40 @@ def set_cached_subtitle(video_id: str, vtt: str, language: str = "original"):
     cache_key = f"{video_id}_{language}"
     subtitle_cache[cache_key] = {
         "vtt": vtt,
+        "language": language,
+        "cached_at": time.time(),
+    }
+
+
+def get_cached_summary(video_id: str, language: str) -> Optional[Dict[str, Any]]:
+    """Get cached summary for a video in a specific language."""
+    cache_key = f"{video_id}_{language}"
+    if cache_key not in summary_cache:
+        return None
+
+    data = summary_cache[cache_key]
+    now = time.time()
+    age_seconds = now - data.get("cached_at", 0)
+
+    if age_seconds > CACHE_EXPIRY_HOURS * 3600:
+        del summary_cache[cache_key]
+        return None
+
+    return data
+
+
+def set_cached_summary(video_id: str, summary: str, key_moments: list, language: str):
+    """Cache summary for a video in a specific language."""
+    if len(summary_cache) >= CACHE_MAX_SIZE:
+        cleanup_expired_cache()
+        while len(summary_cache) >= CACHE_MAX_SIZE:
+            oldest = min(summary_cache.items(), key=lambda x: x[1].get("cached_at", 0))
+            del summary_cache[oldest[0]]
+
+    cache_key = f"{video_id}_{language}"
+    summary_cache[cache_key] = {
+        "summary": summary,
+        "key_moments": key_moments,
         "language": language,
         "cached_at": time.time(),
     }
@@ -270,7 +315,7 @@ async def health_check():
         status="healthy",
         providers=ProviderFactory.list_providers(),
         version="1.0.0",
-        cache_size=len(subtitle_cache),
+        cache_size=len(subtitle_cache) + len(summary_cache),
         uptime_seconds=0,
     )
 
@@ -585,7 +630,7 @@ async def transcribe_video(request: TranscribeRequest, background_tasks: Backgro
 
 
 @app.post("/summarize")
-async def summarize_video(request: SummarizeRequest):
+async def summarize_video(request: SummarizeRequest, background_tasks: BackgroundTasks):
     async def streaming_logic():
         queue = asyncio.Queue()
 
@@ -606,7 +651,41 @@ async def summarize_video(request: SummarizeRequest):
                 )
 
                 video_id = get_video_id(request.video_url)
-                print(f"[DEBUG] Summarize request for video_id: {video_id}")
+                print(f"[DEBUG] Summarize request for video_id: {video_id}, language: {request.summary_language}")
+
+                # Check for cached summary first (by language)
+                if video_id:
+                    cached_summary = get_cached_summary(video_id, request.summary_language)
+                    if cached_summary:
+                        print(f"[DEBUG] Cache found for summary in {request.summary_language}")
+                        await queue.put(
+                            json.dumps(
+                                {
+                                    "action": "progress",
+                                    "stage": "cached",
+                                    "progress": 100,
+                                    "details": f"Using cached summary in {request.summary_language}",
+                                }
+                            )
+                            + "\n"
+                        )
+                        await queue.put(
+                            json.dumps(
+                                {
+                                    "action": "summary_result",
+                                    "success": True,
+                                    "data": {
+                                        "summary": cached_summary["summary"],
+                                        "key_moments": cached_summary["key_moments"],
+                                        "video_id": video_id,
+                                        "cached": True,
+                                    },
+                                }
+                            )
+                            + "\n"
+                        )
+                        await queue.put(None)
+                        return
 
                 # Check for cached subtitles first
                 cached = None
@@ -755,6 +834,11 @@ async def summarize_video(request: SummarizeRequest):
                 summary_text = summary_result.get("summary", "")
                 key_moments = summary_result.get("key_moments", [])
 
+                # Cache the summary with its language
+                if video_id:
+                    set_cached_summary(video_id, summary_text, key_moments, request.summary_language)
+                    background_tasks.add_task(cleanup_expired_cache)
+
                 await queue.put(
                     json.dumps(
                         {
@@ -809,18 +893,24 @@ async def summarize_video(request: SummarizeRequest):
 
 @app.delete("/cache")
 async def clear_cache():
-    initial_count = len(subtitle_cache)
-    print(f"DEBUG: Clearing subtitle cache. Current count: {initial_count}")
+    initial_subtitles = len(subtitle_cache)
+    initial_summaries = len(summary_cache)
+    total_count = initial_subtitles + initial_summaries
+    print(f"DEBUG: Clearing cache. Subtitles: {initial_subtitles}, Summaries: {initial_summaries}, Total: {total_count}")
 
     subtitle_cache.clear()
+    summary_cache.clear()
 
-    final_count = len(subtitle_cache)
+    final_subtitles = len(subtitle_cache)
+    final_summaries = len(summary_cache)
+    final_count = final_subtitles + final_summaries
+
     if final_count != 0:
-        print(f"ERROR: Failed to clear cache! count={final_count}")
+        print(f"ERROR: Failed to clear cache! subtitles={final_subtitles}, summaries={final_summaries}")
         raise HTTPException(status_code=500, detail="Failed to clear cache")
 
-    print(f"SUCCESS: Cache cleared. entries removed: {initial_count}")
-    return {"message": "Cache cleared successfully", "removed_count": initial_count}
+    print(f"SUCCESS: Cache cleared. entries removed: {total_count}")
+    return {"message": "Cache cleared successfully", "removed_count": total_count}
 
 
 if __name__ == "__main__":
